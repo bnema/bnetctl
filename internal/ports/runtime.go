@@ -24,4 +24,7 @@ type RuntimePort interface {
 
 	// KillPrefix stops all Wine processes in the given prefix
 	KillPrefix(prefixPath string) error
+
+	// WaitPrefix blocks until the wineserver for the given prefix exits
+	WaitPrefix(prefixPath string) error
 }

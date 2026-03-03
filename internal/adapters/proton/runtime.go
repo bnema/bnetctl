@@ -121,7 +121,8 @@ func (a *Adapter) RunExeAsync(verb string, prefixPath string, exePath string, pr
 	return done, nil
 }
 
-// IsProcessRunning checks if a Wine process is running in the given prefix
+// IsProcessRunning checks if a Wine process is running in the given prefix.
+// Uses wineserver -k0 (signal 0) which checks existence without killing.
 func (a *Adapter) IsProcessRunning(prefixPath string) bool {
 	runtime, err := a.Detect()
 	if err != nil {
@@ -131,7 +132,7 @@ func (a *Adapter) IsProcessRunning(prefixPath string) bool {
 	env := a.buildBaseEnv(runtime, prefixPath)
 	wineserverBin := filepath.Join(runtime.BinDir, "wineserver")
 
-	cmd := exec.Command(wineserverBin, "-p")
+	cmd := exec.Command(wineserverBin, "-k0")
 	cmd.Env = envMapToSlice(env)
 	return cmd.Run() == nil
 }
@@ -147,6 +148,21 @@ func (a *Adapter) KillPrefix(prefixPath string) error {
 	wineserverBin := filepath.Join(runtime.BinDir, "wineserver")
 
 	cmd := exec.Command(wineserverBin, "-k")
+	cmd.Env = envMapToSlice(env)
+	return cmd.Run()
+}
+
+// WaitPrefix blocks until the wineserver for the given prefix exits
+func (a *Adapter) WaitPrefix(prefixPath string) error {
+	runtime, err := a.Detect()
+	if err != nil {
+		return err
+	}
+
+	env := a.buildBaseEnv(runtime, prefixPath)
+	wineserverBin := filepath.Join(runtime.BinDir, "wineserver")
+
+	cmd := exec.Command(wineserverBin, "-w")
 	cmd.Env = envMapToSlice(env)
 	return cmd.Run()
 }

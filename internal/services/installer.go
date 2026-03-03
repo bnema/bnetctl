@@ -129,16 +129,18 @@ func (s *InstallerService) Install(progressFn func(InstallProgress)) (*domain.In
 					return nil, fmt.Errorf("Battle.net installer failed: %w", exitErr)
 				}
 			}
-			// Process exited — check result and clean up
+			// Process exited — kill wineserver and wait for it to fully terminate
+			report(InstallDone, "Cleaning up...")
 			_ = s.runtime.KillPrefix(s.cfg.PrefixDir)
-			report(InstallDone, "Installation complete")
+			_ = s.runtime.WaitPrefix(s.cfg.PrefixDir)
 			return s.buildResult(exePath, setupPath), nil
 
 		case <-ticker.C:
 			if s.fs.Exists(exePath) {
-				// Battle.net.exe found — installation succeeded, kill the wineserver
+				// Battle.net.exe found — installation succeeded
 				report(InstallDone, "Battle.net client detected, cleaning up...")
 				_ = s.runtime.KillPrefix(s.cfg.PrefixDir)
+				_ = s.runtime.WaitPrefix(s.cfg.PrefixDir)
 				return s.buildResult(exePath, setupPath), nil
 			}
 			// Still waiting, keep polling
