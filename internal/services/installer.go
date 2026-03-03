@@ -133,6 +133,9 @@ func (s *InstallerService) Install(progressFn func(InstallProgress)) (*domain.In
 			report(InstallDone, "Cleaning up...")
 			_ = s.runtime.KillPrefix(s.cfg.PrefixDir)
 			_ = s.runtime.WaitPrefix(s.cfg.PrefixDir)
+			if err := EnsureBattleNetConfig(s.cfg.PrefixDir); err != nil {
+				return nil, fmt.Errorf("ensure Battle.net config: %w", err)
+			}
 			return s.buildResult(exePath, setupPath), nil
 
 		case <-ticker.C:
@@ -141,6 +144,9 @@ func (s *InstallerService) Install(progressFn func(InstallProgress)) (*domain.In
 				report(InstallDone, "Battle.net client detected, cleaning up...")
 				_ = s.runtime.KillPrefix(s.cfg.PrefixDir)
 				_ = s.runtime.WaitPrefix(s.cfg.PrefixDir)
+				if err := EnsureBattleNetConfig(s.cfg.PrefixDir); err != nil {
+					return nil, fmt.Errorf("ensure Battle.net config: %w", err)
+				}
 				return s.buildResult(exePath, setupPath), nil
 			}
 			// Still waiting, keep polling

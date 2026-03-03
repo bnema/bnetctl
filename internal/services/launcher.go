@@ -57,6 +57,9 @@ func (s *LaunchService) Launch() error {
 	if s.envFn != nil {
 		env = s.envFn()
 	}
+	if err := EnsureBattleNetConfig(s.cfg.PrefixDir); err != nil {
+		return fmt.Errorf("ensure Battle.net config: %w", err)
+	}
 
 	// Launch — this replaces the process
 	return s.runtime.RunExe(domain.VerbRun, s.cfg.PrefixDir, inst.ExePath, env)
