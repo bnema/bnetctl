@@ -120,12 +120,16 @@ func extractIcon(cfg *domain.Config) string {
 	// Check if icoutils is available
 	wrestool, err := exec.LookPath("wrestool")
 	if err != nil {
-		log.Debug("wrestool not found, using fallback icon", "hint", "install icoutils for Battle.net icon extraction")
+		log.Warn("wrestool not found, using fallback icon")
+		fmt.Fprintln(os.Stderr, styles.Warning.Render("Icon extraction skipped: icoutils not installed"))
+		fmt.Fprintln(os.Stderr, styles.Muted.Render("  Install it: sudo pacman -S icoutils"))
 		return "applications-games"
 	}
 	icotool, err := exec.LookPath("icotool")
 	if err != nil {
-		log.Debug("icotool not found, using fallback icon", "hint", "install icoutils for Battle.net icon extraction")
+		log.Warn("icotool not found, using fallback icon")
+		fmt.Fprintln(os.Stderr, styles.Warning.Render("Icon extraction skipped: icoutils not installed"))
+		fmt.Fprintln(os.Stderr, styles.Muted.Render("  Install it: sudo pacman -S icoutils"))
 		return "applications-games"
 	}
 
