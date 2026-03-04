@@ -27,7 +27,7 @@ type InstallProgress struct {
 	Status  InstallStatus
 	Message string
 	// Download is non-nil during the download phase
-	Download *ports.DownloadProgress
+	Download *domain.DownloadProgress
 }
 
 // InstallerService orchestrates the Battle.net installation process
@@ -89,7 +89,7 @@ func (s *InstallerService) Install(progressFn func(InstallProgress)) (*domain.In
 	if !s.fs.Exists(setupPath) {
 		log.Debug("downloading installer", "url", domain.BattleNetSetupURL, "dest", setupPath)
 		report(InstallDownloading, "Downloading Battle.net installer...")
-		dlProgressFn := func(p ports.DownloadProgress) {
+		dlProgressFn := func(p domain.DownloadProgress) {
 			if progressFn != nil {
 				progressFn(InstallProgress{
 					Status:   InstallDownloading,
@@ -136,7 +136,7 @@ func (s *InstallerService) Install(progressFn func(InstallProgress)) (*domain.In
 	case exitErr := <-done:
 		log.Info("installer process exited", "error", exitErr)
 		if exitErr != nil && !s.fs.Exists(exePath) {
-			return nil, fmt.Errorf("Battle.net installer failed: %w", exitErr)
+			return nil, fmt.Errorf("battle.net installer failed: %w", exitErr)
 		}
 	case <-timeout.C:
 		log.Error("installer timed out")

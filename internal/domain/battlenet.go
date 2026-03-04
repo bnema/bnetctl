@@ -31,3 +31,10 @@ const BattleNetSetupURL = "https://downloader.battle.net/download/getInstaller?o
 
 // BattleNetExeRelPath is the relative path to Battle.net.exe inside the prefix
 const BattleNetExeRelPath = "drive_c/Program Files (x86)/Battle.net/Battle.net.exe"
+
+// DownloadProgress reports progress for a file transfer.
+type DownloadProgress struct {
+	BytesDownloaded int64
+	TotalBytes      int64
+	Percent         float64
+}

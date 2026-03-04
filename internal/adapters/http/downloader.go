@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/bnema/bnetctl/internal/domain"
 	"github.com/bnema/bnetctl/internal/ports"
 )
 
@@ -25,7 +26,7 @@ func NewDownloader() *Downloader {
 }
 
 // Download fetches a URL to a local file, reporting progress
-func (d *Downloader) Download(url string, destPath string, progressFn func(ports.DownloadProgress)) error {
+func (d *Downloader) Download(url string, destPath string, progressFn func(domain.DownloadProgress)) error {
 	// Ensure parent directory exists
 	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
 		return fmt.Errorf("create download dir: %w", err)
@@ -35,7 +36,7 @@ func (d *Downloader) Download(url string, destPath string, progressFn func(ports
 	if err != nil {
 		return fmt.Errorf("download request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("download failed with status %d", resp.StatusCode)
@@ -45,7 +46,7 @@ func (d *Downloader) Download(url string, destPath string, progressFn func(ports
 	if err != nil {
 		return fmt.Errorf("create file: %w", err)
 	}
-	defer out.Close()
+	defer func() { _ = out.Close() }()
 
 	totalBytes := resp.ContentLength
 
@@ -71,7 +72,7 @@ func (d *Downloader) Download(url string, destPath string, progressFn func(ports
 			if totalBytes > 0 {
 				percent = float64(downloaded) / float64(totalBytes) * 100
 			}
-			progressFn(ports.DownloadProgress{
+			progressFn(domain.DownloadProgress{
 				BytesDownloaded: downloaded,
 				TotalBytes:      totalBytes,
 				Percent:         percent,
