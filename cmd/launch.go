@@ -35,20 +35,19 @@ func runLaunch(cmd *cobra.Command, args []string) error {
 	runtime := wine.NewAdapter()
 	fs := xdg.NewFilesystem()
 
+	// Display Wine version before launch (display-only; service re-detects internally)
+	if rt, err := runtime.Detect(); err == nil {
+		fmt.Println(styles.StepPrefix.Render("Wine: ") + rt.Version)
+	}
 	fmt.Println(styles.StepPrefix.Render("Launching Battle.net..."))
 
 	launcher := services.NewLaunchService(runtime, fs, cfg, env.BuildGPUEnv)
 
-	// Launch replaces the process on success
 	log.Info("launching battle.net")
-	result, err := launcher.Launch()
-	if err != nil {
+	if _, err := launcher.Launch(); err != nil {
 		log.Error("launch failed", "error", err)
 		fmt.Fprintln(os.Stderr, styles.Error.Render("Launch failed: ")+err.Error())
 		return err
-	}
-	if result != nil && result.Runtime != nil {
-		fmt.Println(styles.StepPrefix.Render("Wine: ") + result.Runtime.Version)
 	}
 
 	log.Info("battle.net exited")

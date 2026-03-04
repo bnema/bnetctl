@@ -14,7 +14,8 @@ import (
 type InstallStatus int
 
 const (
-	InstallDownloading InstallStatus = iota
+	InstallDetecting InstallStatus = iota
+	InstallDownloading
 	InstallCreatingPrefix
 	InstallRunningSetup
 	InstallWaitingForClient
@@ -80,7 +81,7 @@ func (s *InstallerService) Install(progressFn func(InstallProgress)) (*domain.In
 		return nil, fmt.Errorf("detect wine: %w", err)
 	}
 	if progressFn != nil {
-		progressFn(InstallProgress{Status: InstallDownloading, Message: "Wine detected", Runtime: rt})
+		progressFn(InstallProgress{Status: InstallDetecting, Message: "Wine detected", Runtime: rt})
 	}
 
 	// Step 2: Ensure directories

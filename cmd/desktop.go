@@ -57,7 +57,7 @@ func runDesktopAdd(cmd *cobra.Command, args []string) error {
 	extractor := icoutils.NewExtractor()
 	exePath := filepath.Join(cfg.PrefixDir, "pfx", domain.BattleNetExeRelPath)
 	destPath := filepath.Join(cfg.DataDir, "battlenet.png")
-	iconPath, _ := extractor.ExtractIcon(exePath, destPath)
+	iconPath := extractor.ExtractIcon(exePath, destPath)
 	if err := createDesktopEntry(desktop, iconPath); err != nil {
 		return err
 	}

@@ -71,6 +71,8 @@ func runInstall(cmd *cobra.Command, args []string) error {
 			}
 		}
 		switch p.Status {
+		case services.InstallDetecting:
+			// Wine info already displayed above; nothing else to render
 		case services.InstallDownloading:
 			if lastStatus != p.Status {
 				log.Info("download started")
@@ -130,7 +132,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 			extractor := icoutils.NewExtractor()
 			exePath := filepath.Join(cfg.PrefixDir, "pfx", domain.BattleNetExeRelPath)
 			destPath := filepath.Join(cfg.DataDir, "battlenet.png")
-			iconPath, _ := extractor.ExtractIcon(exePath, destPath)
+			iconPath := extractor.ExtractIcon(exePath, destPath)
 			if err := createDesktopEntry(desktop, iconPath); err != nil {
 				log.Warn("failed to create desktop entry", "error", err)
 			} else {

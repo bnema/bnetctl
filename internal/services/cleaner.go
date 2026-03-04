@@ -79,7 +79,7 @@ func (s *CleanerService) CleanAll() error {
 	}
 
 	// Remove desktop entry
-	s.desktop.RemoveEntry("bnetctl")
+	_ = s.desktop.RemoveEntry("bnetctl")
 
 	// Remove data dir
 	if s.fs.Exists(s.cfg.DataDir) {

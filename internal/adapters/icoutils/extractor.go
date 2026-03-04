@@ -23,17 +23,17 @@ func NewExtractor() *Extractor {
 
 // ExtractIcon extracts the best-quality icon from exePath and writes it to destPath.
 // Returns the final icon path on success, or "applications-games" (XDG fallback) on failure.
-func (e *Extractor) ExtractIcon(exePath string, destPath string) (string, error) {
+func (e *Extractor) ExtractIcon(exePath string, destPath string) string {
 	log := logger.Log
 
 	// If icon already exists, reuse it
 	if _, err := os.Stat(destPath); err == nil {
-		return destPath, nil
+		return destPath
 	}
 
 	if _, err := os.Stat(exePath); err != nil {
 		log.Debug("battle.net exe not found, using fallback icon")
-		return "applications-games", nil
+		return "applications-games"
 	}
 
 	// Check if icoutils is available
@@ -42,14 +42,14 @@ func (e *Extractor) ExtractIcon(exePath string, destPath string) (string, error)
 		log.Warn("wrestool not found, using fallback icon")
 		fmt.Fprintln(os.Stderr, styles.Warning.Render("Icon extraction skipped: icoutils not installed"))
 		fmt.Fprintln(os.Stderr, styles.Muted.Render("  Install it: sudo pacman -S icoutils"))
-		return "applications-games", nil
+		return "applications-games"
 	}
 	icotool, err := exec.LookPath("icotool")
 	if err != nil {
 		log.Warn("icotool not found, using fallback icon")
 		fmt.Fprintln(os.Stderr, styles.Warning.Render("Icon extraction skipped: icoutils not installed"))
 		fmt.Fprintln(os.Stderr, styles.Muted.Render("  Install it: sudo pacman -S icoutils"))
-		return "applications-games", nil
+		return "applications-games"
 	}
 
 	// Extract .ico from exe
@@ -59,24 +59,24 @@ func (e *Extractor) ExtractIcon(exePath string, destPath string) (string, error)
 	wrestoolCmd := exec.Command(wrestool, "-x", "-t", "14", "-o", tmpIco, exePath)
 	if err := wrestoolCmd.Run(); err != nil {
 		log.Debug("wrestool extraction failed", "error", err)
-		return "applications-games", nil
+		return "applications-games"
 	}
 
 	tmpDir, err := os.MkdirTemp("", "bnetctl-icons-")
 	if err != nil {
-		return "applications-games", nil
+		return "applications-games"
 	}
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	icotoolCmd := exec.Command(icotool, "-x", "-o", tmpDir, tmpIco)
 	if err := icotoolCmd.Run(); err != nil {
 		log.Debug("icotool conversion failed", "error", err)
-		return "applications-games", nil
+		return "applications-games"
 	}
 
 	entries, err := os.ReadDir(tmpDir)
 	if err != nil || len(entries) == 0 {
-		return "applications-games", nil
+		return "applications-games"
 	}
 
 	var bestFile string
@@ -96,21 +96,21 @@ func (e *Extractor) ExtractIcon(exePath string, destPath string) (string, error)
 	}
 
 	if bestFile == "" {
-		return "applications-games", nil
+		return "applications-games"
 	}
 
 	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
-		return "applications-games", nil
+		return "applications-games"
 	}
 
 	data, err := os.ReadFile(bestFile)
 	if err != nil {
-		return "applications-games", nil
+		return "applications-games"
 	}
 	if err := os.WriteFile(destPath, data, 0o644); err != nil {
-		return "applications-games", nil
+		return "applications-games"
 	}
 
 	log.Info("extracted battle.net icon", "path", destPath, "size", bestSize)
-	return destPath, nil
+	return destPath
 }

@@ -55,6 +55,6 @@ func InitWithFile(logPath string, verbose bool) error {
 // Close closes the log file
 func Close() {
 	if logFile != nil {
-		logFile.Close()
+		_ = logFile.Close()
 	}
 }
