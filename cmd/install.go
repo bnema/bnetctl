@@ -125,6 +125,19 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	if result.Installed {
 		fmt.Println(styles.Success.Render("Battle.net installed successfully!"))
 		fmt.Println(styles.Muted.Render("  Prefix: " + result.PrefixPath))
+
+		// Auto-create desktop entry
+		desktop := xdg.NewDesktop()
+		if !desktop.EntryExists("bnetctl") {
+			iconPath := extractIcon(cfg)
+			if err := createDesktopEntry(desktop, iconPath); err != nil {
+				log.Warn("failed to create desktop entry", "error", err)
+			} else {
+				log.Info("desktop entry auto-created", "icon", iconPath)
+				fmt.Println(styles.Muted.Render("  Desktop entry created"))
+			}
+		}
+
 		fmt.Println(styles.Muted.Render("  Run 'bnetctl launch' to start Battle.net"))
 	} else {
 		fmt.Println(styles.Warning.Render("Installation completed but Battle.net exe not found."))
