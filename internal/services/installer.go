@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/bnema/bnetctl/internal/domain"
+	"github.com/bnema/bnetctl/internal/logger"
 	"github.com/bnema/bnetctl/internal/ports"
 )
 
@@ -53,14 +54,16 @@ func NewInstallerService(
 }
 
 // Install performs the full installation with progress reporting:
-// 1. Detect proton-cachyos
+// 1. Detect wine-cachyos
 // 2. Create directories
 // 3. Download Battle.net-Setup.exe
 // 4. Create Wine prefix
 // 5. Run the installer asynchronously
-// 6. Poll until Battle.net.exe appears in prefix
-// 7. Kill wineserver to clean up
+// 6. Wait for installer to exit gracefully
+// 7. Clean up wineserver
 func (s *InstallerService) Install(progressFn func(InstallProgress)) (*domain.Installation, error) {
+	log := logger.Log
+
 	report := func(status InstallStatus, msg string) {
 		if progressFn != nil {
 			progressFn(InstallProgress{Status: status, Message: msg})
@@ -68,18 +71,23 @@ func (s *InstallerService) Install(progressFn func(InstallProgress)) (*domain.In
 	}
 
 	// Step 1: Detect runtime
+	log.Debug("detecting wine runtime")
 	if _, err := s.runtime.Detect(); err != nil {
-		return nil, fmt.Errorf("detect proton: %w", err)
+		log.Error("wine runtime detection failed", "error", err)
+		return nil, fmt.Errorf("detect wine: %w", err)
 	}
 
 	// Step 2: Ensure directories
+	log.Debug("ensuring directories", "data", s.cfg.DataDir, "cache", s.cfg.CacheDir, "prefix", s.cfg.PrefixDir)
 	if err := s.fs.EnsureDirs(s.cfg); err != nil {
+		log.Error("ensure directories failed", "error", err)
 		return nil, fmt.Errorf("create directories: %w", err)
 	}
 
 	// Step 3: Download installer
 	setupPath := filepath.Join(s.cfg.CacheDir, "Battle.net-Setup.exe")
 	if !s.fs.Exists(setupPath) {
+		log.Debug("downloading installer", "url", domain.BattleNetSetupURL, "dest", setupPath)
 		report(InstallDownloading, "Downloading Battle.net installer...")
 		dlProgressFn := func(p ports.DownloadProgress) {
 			if progressFn != nil {
@@ -91,6 +99,7 @@ func (s *InstallerService) Install(progressFn func(InstallProgress)) (*domain.In
 			}
 		}
 		if err := s.downloader.Download(domain.BattleNetSetupURL, setupPath, dlProgressFn); err != nil {
+			log.Error("downloading installer failed", "error", err)
 			return nil, fmt.Errorf("download Battle.net installer: %w", err)
 		}
 	}
@@ -98,16 +107,20 @@ func (s *InstallerService) Install(progressFn func(InstallProgress)) (*domain.In
 	// Step 4: Create prefix if needed
 	pfxDir := filepath.Join(s.cfg.PrefixDir, "pfx")
 	if !s.fs.Exists(pfxDir) {
+		log.Debug("creating wine prefix", "path", s.cfg.PrefixDir)
 		report(InstallCreatingPrefix, "Creating Wine prefix...")
 		if err := s.runtime.CreatePrefix(s.cfg.PrefixDir); err != nil {
+			log.Error("create wine prefix failed", "error", err)
 			return nil, fmt.Errorf("create Wine prefix: %w", err)
 		}
 	}
 
 	// Step 5: Launch installer asynchronously
+	log.Debug("launching installer async", "setup", setupPath)
 	report(InstallRunningSetup, "Running Battle.net installer...")
-	done, err := s.runtime.RunExeAsync(domain.VerbRunInPrefix, s.cfg.PrefixDir, setupPath, nil)
+	done, err := s.runtime.RunExeAsync(s.cfg.PrefixDir, setupPath, nil)
 	if err != nil {
+		log.Error("start installer failed", "error", err)
 		return nil, fmt.Errorf("start Battle.net installer: %w", err)
 	}
 
@@ -115,42 +128,36 @@ func (s *InstallerService) Install(progressFn func(InstallProgress)) (*domain.In
 	exePath := filepath.Join(s.cfg.PrefixDir, "pfx", domain.BattleNetExeRelPath)
 	report(InstallWaitingForClient, "Waiting for Battle.net to install (this may take a few minutes)...")
 
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
+	timeout := time.NewTimer(30 * time.Minute)
+	defer timeout.Stop()
+	log.Debug("waiting for installer to exit", "timeout", "30m")
 
-	for {
-		select {
-		case exitErr := <-done:
-			// Installer process exited
-			if exitErr != nil {
-				// Check if Battle.net got installed anyway (installer might exit non-zero
-				// after launching the client)
-				if !s.fs.Exists(exePath) {
-					return nil, fmt.Errorf("Battle.net installer failed: %w", exitErr)
-				}
-			}
-			// Process exited — clean up wineserver processes
-			report(InstallDone, "Cleaning up...")
-			_ = s.runtime.GracefulKillPrefix(s.cfg.PrefixDir, 5*time.Second)
-			if err := EnsureBattleNetConfig(s.cfg.PrefixDir); err != nil {
-				return nil, fmt.Errorf("ensure Battle.net config: %w", err)
-			}
-			return s.buildResult(exePath, setupPath), nil
-
-		case <-ticker.C:
-			if s.fs.Exists(exePath) {
-				// Battle.net.exe found — installation succeeded
-				report(InstallDone, "Battle.net client detected, cleaning up...")
-				_ = s.runtime.GracefulKillPrefix(s.cfg.PrefixDir, 5*time.Second)
-				if err := EnsureBattleNetConfig(s.cfg.PrefixDir); err != nil {
-					return nil, fmt.Errorf("ensure Battle.net config: %w", err)
-				}
-				return s.buildResult(exePath, setupPath), nil
-			}
-			// Still waiting, keep polling
-			report(InstallWaitingForClient, "Waiting for Battle.net to install...")
+	select {
+	case exitErr := <-done:
+		log.Info("installer process exited", "error", exitErr)
+		if exitErr != nil && !s.fs.Exists(exePath) {
+			return nil, fmt.Errorf("Battle.net installer failed: %w", exitErr)
 		}
+	case <-timeout.C:
+		log.Error("installer timed out")
+		_ = s.runtime.GracefulKillPrefix(s.cfg.PrefixDir, 10*time.Second)
+		return nil, fmt.Errorf("installation timed out after 30 minutes")
 	}
+
+	// Installer exited — give Battle.net Agent a moment to finish, then clean up
+	report(InstallDone, "Installer finished, waiting for Battle.net Agent to settle...")
+	time.Sleep(10 * time.Second)
+	log.Debug("post-install settle complete, cleaning up")
+
+	_ = s.runtime.GracefulKillPrefix(s.cfg.PrefixDir, 10*time.Second)
+
+	if err := EnsureBattleNetConfig(s.cfg.PrefixDir); err != nil {
+		log.Error("ensure battle.net config failed", "error", err)
+		return nil, fmt.Errorf("ensure Battle.net config: %w", err)
+	}
+	log.Info("battle.net config ensured", "prefix", s.cfg.PrefixDir)
+
+	return s.buildResult(exePath, setupPath), nil
 }
 
 // GetInstallation returns the current installation state

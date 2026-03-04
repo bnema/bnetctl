@@ -52,24 +52,10 @@ func IsWayland() bool {
 	return os.Getenv("WAYLAND_DISPLAY") != ""
 }
 
-// hasNTSync checks if the ntsync kernel module is loaded
-func hasNTSync() bool {
-	data, err := os.ReadFile("/proc/modules")
-	if err != nil {
-		return false
-	}
-	for _, line := range strings.Split(string(data), "\n") {
-		if strings.HasPrefix(line, "ntsync ") {
-			return true
-		}
-	}
-	return false
-}
-
 // BuildGPUEnv returns environment variables optimized for the detected GPU
 // and the current desktop session (focused on Wayland tiling WMs like niri, hyprland).
-func BuildGPUEnv() *domain.ProtonEnv {
-	env := &domain.ProtonEnv{
+func BuildGPUEnv() *domain.WineEnv {
+	env := &domain.WineEnv{
 		Vars: make(map[string]string),
 	}
 
@@ -79,7 +65,6 @@ func BuildGPUEnv() *domain.ProtonEnv {
 	switch gpu {
 	case GPUVendorAMD:
 		env.Vars["AMD_VULKAN_ICD"] = "RADV"
-		env.Vars["RADV_PERFTEST"] = "gpl"
 	case GPUVendorNVIDIA:
 		if IsWayland() {
 			// Required for NVIDIA on Wayland compositors
@@ -88,13 +73,21 @@ func BuildGPUEnv() *domain.ProtonEnv {
 		}
 	}
 
-	// Wine/Proton should use XWayland (via DISPLAY) for Battle.net/CEF apps.
+	// Wine should use XWayland (via DISPLAY) for Battle.net/CEF apps.
 	// Wine's native Wayland driver has issues with CEF-based apps like Battle.net.
 	// On tiling WMs (niri, hyprland, sway), xwayland-satellite provides DISPLAY.
 	// We do NOT unset DISPLAY or force Wayland — XWayland is more stable for gaming.
 
-	// NTSync: if the kernel module is loaded, Proton will use it automatically.
-	// No env var needed — proton-cachyos detects /dev/ntsync at runtime.
+	// NTSync: wine-cachyos detects /dev/ntsync automatically. No env var needed.
+
+	// Wine sync primitives — enable esync/fsync for frame pacing.
+	// NTSync (preferred) is auto-detected by wine-cachyos from /dev/ntsync.
+	// esync/fsync are fallbacks if ntsync is unavailable.
+	env.Vars["WINEESYNC"] = "1"
+	env.Vars["WINEFSYNC"] = "1"
+
+	// Suppress Wine debug output for performance
+	env.Vars["WINEDEBUG"] = "-all"
 
 	// FreeType hinting for better font rendering in Wine
 	env.Vars["FREETYPE_PROPERTIES"] = "truetype:interpreter-version=35"

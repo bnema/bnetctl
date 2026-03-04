@@ -10,7 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/bnema/bnetctl/internal/adapters/proton"
+	"github.com/bnema/bnetctl/internal/adapters/wine"
 	"github.com/bnema/bnetctl/internal/adapters/xdg"
 	"github.com/bnema/bnetctl/internal/ui/styles"
 )
@@ -34,16 +34,21 @@ func init() {
 }
 
 func runKill(cmd *cobra.Command, args []string) error {
+	log := getLogger()
+
 	cfg, err := xdg.DefaultConfig()
 	if err != nil {
+		log.Error("load config failed", "error", err)
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	runtime := proton.NewAdapter("")
+	runtime := wine.NewAdapter()
+	log.Info("killing wine processes", "prefix", cfg.PrefixDir, "all", killAll)
 
 	// Step 1: Try graceful wineserver kill
 	fmt.Println("Stopping wineserver...")
 	_ = runtime.GracefulKillPrefix(cfg.PrefixDir, 3*time.Second)
+	log.Info("wineserver stopped")
 
 	if !killAll {
 		fmt.Println(styles.Success.Render("Done."))
@@ -53,6 +58,7 @@ func runKill(cmd *cobra.Command, args []string) error {
 	// Step 2: --all mode — scan /proc and kill anything belonging to our prefix
 	fmt.Println("Scanning for orphaned processes...")
 	killed := killPrefixProcesses(cfg.PrefixDir)
+	log.Info("orphan scan complete", "killed", killed)
 	if killed > 0 {
 		fmt.Printf(styles.Success.Render("Killed %d orphaned process(es).")+"\n", killed)
 	} else {
@@ -70,7 +76,7 @@ func killPrefixProcesses(prefixPath string) int {
 		return 0
 	}
 
-	marker := "STEAM_COMPAT_DATA_PATH=" + prefixPath
+	marker := "WINEPREFIX=" + filepath.Join(prefixPath, "pfx")
 	myPid := os.Getpid()
 	killed := 0
 

@@ -3,12 +3,14 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
 	"github.com/bnema/bnetctl/internal/adapters/env"
-	"github.com/bnema/bnetctl/internal/adapters/proton"
+	"github.com/bnema/bnetctl/internal/adapters/wine"
 	"github.com/bnema/bnetctl/internal/adapters/xdg"
+	"github.com/bnema/bnetctl/internal/domain"
 	"github.com/bnema/bnetctl/internal/services"
 	"github.com/bnema/bnetctl/internal/ui/styles"
 )
@@ -32,28 +34,33 @@ func runLaunch(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	runtime := proton.NewAdapter("")
+	runtime := wine.NewAdapter()
 	fs := xdg.NewFilesystem()
 
-	// Detect proton
+	// Detect wine
 	rt, err := runtime.Detect()
 	if err != nil {
+		log.Error("wine detection failed", "error", err)
 		fmt.Fprintln(os.Stderr, styles.Error.Render("Error: ")+err.Error())
 		return err
 	}
 
-	log.Debug("proton detected", "version", rt.Version)
-	fmt.Println(styles.StepPrefix.Render("Proton: ") + rt.Version)
+	log.Info("wine detected", "version", rt.Version)
+	fmt.Println(styles.StepPrefix.Render("Wine: ") + rt.Version)
 	fmt.Println(styles.StepPrefix.Render("Launching Battle.net..."))
 
 	launcher := services.NewLaunchService(runtime, fs, cfg, env.BuildGPUEnv)
 
 	// Launch replaces the process on success
+	exePath := filepath.Join(cfg.PrefixDir, "pfx", domain.BattleNetExeRelPath)
+	log.Info("launching battle.net", "exe", exePath)
 	if err := launcher.Launch(); err != nil {
+		log.Error("launch failed", "error", err)
 		fmt.Fprintln(os.Stderr, styles.Error.Render("Launch failed: ")+err.Error())
 		return err
 	}
 
+	log.Info("battle.net exited")
 	// Should not reach here (process replaced)
 	return nil
 }

@@ -2,7 +2,7 @@ package domain
 
 // Installation represents the state of a Battle.net installation
 type Installation struct {
-	// PrefixPath is the Wine/Proton prefix directory
+	// PrefixPath is the Wine prefix directory
 	PrefixPath string
 	// ExePath is the path to Battle.net.exe inside the prefix
 	ExePath string

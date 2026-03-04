@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bnema/bnetctl/internal/adapters/http"
-	"github.com/bnema/bnetctl/internal/adapters/proton"
+	"github.com/bnema/bnetctl/internal/adapters/wine"
 	"github.com/bnema/bnetctl/internal/adapters/xdg"
 	"github.com/bnema/bnetctl/internal/services"
 	"github.com/bnema/bnetctl/internal/ui/styles"
@@ -32,27 +32,41 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	runtime := proton.NewAdapter("")
+	runtime := wine.NewAdapter()
 	downloader := http.NewDownloader()
 	fs := xdg.NewFilesystem()
 
-	// Detect proton first
+	// Detect wine first
 	rt, err := runtime.Detect()
 	if err != nil {
+		log.Error("wine detection failed", "error", err)
 		fmt.Fprintln(os.Stderr, styles.Error.Render("Error: ")+err.Error())
-		fmt.Fprintln(os.Stderr, styles.Muted.Render("Install proton-cachyos: paru -S proton-cachyos"))
+		fmt.Fprintln(os.Stderr, styles.Muted.Render("Install wine-cachyos: paru -S wine-cachyos"))
 		return err
 	}
-	fmt.Println(styles.StepPrefix.Render("Proton: ") + rt.Version)
+	log.Info("wine detected", "version", rt.Version, "ntsync", rt.HasNTSync, "dxvk_setup", rt.HasDXVKSetup)
+	fmt.Println(styles.StepPrefix.Render("Wine: ") + rt.Version)
+	if rt.HasNTSync {
+		fmt.Println(styles.Muted.Render("  NTSync: enabled"))
+	}
+	if rt.HasDXVKSetup {
+		fmt.Println(styles.Muted.Render("  DXVK: will auto-install"))
+	}
+	if rt.HasVKD3DSetup {
+		fmt.Println(styles.Muted.Render("  VKD3D-proton: will auto-install"))
+	}
 
 	installer := services.NewInstallerService(runtime, downloader, fs, cfg)
 
 	// Check if already installed
 	inst := installer.GetInstallation()
 	if inst.Installed {
+		log.Info("battle.net already installed", "prefix", inst.PrefixPath)
 		fmt.Println(styles.Warning.Render("Battle.net is already installed."))
 		return nil
 	}
+
+	log.Info("starting installation")
 
 	// Track last status to avoid repeating messages
 	var lastStatus services.InstallStatus = -1
@@ -60,6 +74,9 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	progressFn := func(p services.InstallProgress) {
 		switch p.Status {
 		case services.InstallDownloading:
+			if lastStatus != p.Status {
+				log.Info("download started")
+			}
 			if p.Download != nil {
 				if p.Download.TotalBytes > 0 {
 					mb := float64(p.Download.BytesDownloaded) / 1024 / 1024
@@ -72,20 +89,24 @@ func runInstall(cmd *cobra.Command, args []string) error {
 			}
 		case services.InstallCreatingPrefix:
 			if lastStatus != p.Status {
+				log.Info("creating wine prefix")
 				fmt.Println()
 				fmt.Println(styles.StepPrefix.Render("  Creating Wine prefix..."))
 			}
 		case services.InstallRunningSetup:
 			if lastStatus != p.Status {
+				log.Info("running installer setup")
 				fmt.Println(styles.StepPrefix.Render("  Running Battle.net installer..."))
 			}
 		case services.InstallWaitingForClient:
 			if lastStatus != p.Status {
+				log.Info("waiting for battle.net client installation")
 				fmt.Println(styles.StepPrefix.Render("  Waiting for Battle.net to finish installing..."))
 				fmt.Println(styles.Muted.Render("  (The installer will download ~400 MB — this takes a few minutes)"))
 			}
 		case services.InstallDone:
 			if lastStatus != p.Status {
+				log.Info("installation cleanup started")
 				fmt.Println(styles.StepPrefix.Render("  Cleaning up..."))
 			}
 		}
@@ -94,6 +115,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 
 	result, err := installer.Install(progressFn)
 	if err != nil {
+		log.Error("installation failed", "error", err)
 		fmt.Fprintln(os.Stderr)
 		fmt.Fprintln(os.Stderr, styles.Error.Render("Installation failed: ")+err.Error())
 		return err
@@ -109,6 +131,6 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		fmt.Println(styles.Muted.Render("  The installer may need more time. Try 'bnetctl install' again."))
 	}
 
-	log.Debug("install completed", "prefix", result.PrefixPath, "installed", result.Installed)
+	log.Info("installation completed", "prefix", result.PrefixPath, "installed", result.Installed)
 	return nil
 }

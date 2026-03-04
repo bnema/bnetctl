@@ -6,6 +6,7 @@ import (
 	"github.com/charmbracelet/log"
 	"github.com/spf13/cobra"
 
+	"github.com/bnema/bnetctl/internal/adapters/xdg"
 	"github.com/bnema/bnetctl/internal/logger"
 )
 
@@ -19,10 +20,10 @@ var verbose bool
 
 var rootCmd = &cobra.Command{
 	Use:     "bnetctl",
-	Short:   "Battle.net launcher for Linux via proton-cachyos",
+	Short:   "Battle.net launcher for Linux via wine-cachyos",
 	Version: version + " (" + commit + ")",
 	Long: `A CLI tool to install, manage, and run Battle.net on Linux
-using proton-cachyos as the compatibility layer.
+using wine-cachyos as the compatibility layer.
 
 Quick start:
   bnetctl install    Download and install Battle.net
@@ -38,7 +39,16 @@ func Execute() {
 
 func init() {
 	rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
-		_ = logger.Init(verbose)
+		cfg, err := xdg.DefaultConfig()
+		if err != nil {
+			// Fall back to stderr-only logging
+			_ = logger.Init(verbose)
+			return
+		}
+		if err := logger.InitWithFile(cfg.LogFile, verbose); err != nil {
+			// Fall back to stderr-only logging
+			_ = logger.Init(verbose)
+		}
 	}
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose/debug logging")
 }

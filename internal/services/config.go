@@ -5,10 +5,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/bnema/bnetctl/internal/domain"
+	"github.com/bnema/bnetctl/internal/logger"
 )
 
-// defaultBattleNetConfig is the baseline config for Battle.net under Wine/Proton.
-// HardwareAcceleration must be false (CEF GPU rendering fails under Wine).
+// defaultBattleNetConfig is the baseline config for Battle.net under Wine.
+// Do NOT set HardwareAcceleration: false — it breaks CEF rendering under Wine.
 // LastLoginTassadar/LastLoginAddress are required because Battle.net's backend
 // cert validation fails under Wine — these cached values provide the fallback
 // login URL that lets the auth flow recover.
@@ -38,10 +41,14 @@ var defaultBattleNetConfig = map[string]any{
 // EnsureBattleNetConfig ensures required config values are present.
 // Creates the file if missing, or merges required keys into existing config.
 func EnsureBattleNetConfig(prefixDir string) error {
+	log := logger.Log
+
+	username := domain.WineUsername()
 	configPath := filepath.Join(
-		prefixDir, "pfx", "drive_c", "users", "steamuser",
+		prefixDir, "pfx", "drive_c", "users", username,
 		"AppData", "Roaming", "Battle.net", "Battle.net.config",
 	)
+	log.Debug("ensuring battle.net config", "path", configPath, "username", username)
 
 	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
 		return fmt.Errorf("create Battle.net config directory: %w", err)
@@ -52,6 +59,7 @@ func EnsureBattleNetConfig(prefixDir string) error {
 	data, err := os.ReadFile(configPath)
 	if err == nil {
 		_ = json.Unmarshal(data, &existing)
+		log.Debug("loaded existing config", "keys", len(existing))
 	}
 
 	// Merge defaults into existing (defaults don't overwrite existing keys)
@@ -65,6 +73,7 @@ func EnsureBattleNetConfig(prefixDir string) error {
 	if err := os.WriteFile(configPath, out, 0o644); err != nil {
 		return fmt.Errorf("write Battle.net config: %w", err)
 	}
+	log.Info("battle.net config written", "path", configPath)
 
 	return nil
 }

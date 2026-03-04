@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 
@@ -12,22 +13,20 @@ var Log *log.Logger
 
 var logFile *os.File
 
-// Init initializes the logger. If verbose is true, logs go to stderr too.
+// Init initializes the logger with file output and optional stderr output.
+// Logs always go to logPath. When verbose is true, logs also go to stderr.
 func Init(verbose bool) error {
-	// Default: discard logs
+	// Fallback: stderr-only logger until InitWithFile is called
 	Log = log.New(os.Stderr)
-	Log.SetLevel(log.InfoLevel)
-
-	if !verbose {
-		Log.SetLevel(log.WarnLevel)
-	} else {
+	if verbose {
 		Log.SetLevel(log.DebugLevel)
+	} else {
+		Log.SetLevel(log.WarnLevel)
 	}
-
 	return nil
 }
 
-// InitWithFile initializes logging to a file
+// InitWithFile initializes logging to a file (always) and stderr (when verbose).
 func InitWithFile(logPath string, verbose bool) error {
 	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
 		return err
@@ -39,15 +38,16 @@ func InitWithFile(logPath string, verbose bool) error {
 		return err
 	}
 
-	Log = log.New(logFile)
-	Log.SetLevel(log.DebugLevel)
-
+	// Always write to file; also to stderr when verbose
+	var w io.Writer
 	if verbose {
-		// Also log to stderr when verbose
-		stderrLogger := log.New(os.Stderr)
-		stderrLogger.SetLevel(log.DebugLevel)
-		Log = stderrLogger
+		w = io.MultiWriter(logFile, os.Stderr)
+	} else {
+		w = logFile
 	}
+
+	Log = log.New(w)
+	Log.SetLevel(log.DebugLevel)
 
 	return nil
 }

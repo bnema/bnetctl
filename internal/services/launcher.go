@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/bnema/bnetctl/internal/domain"
+	"github.com/bnema/bnetctl/internal/logger"
 	"github.com/bnema/bnetctl/internal/ports"
 )
 
@@ -16,7 +17,7 @@ type LaunchService struct {
 	runtime ports.RuntimePort
 	fs      ports.FilesystemPort
 	cfg     *domain.Config
-	envFn   func() *domain.ProtonEnv
+	envFn   func() *domain.WineEnv
 }
 
 // NewLaunchService creates a new launch service.
@@ -25,7 +26,7 @@ func NewLaunchService(
 	runtime ports.RuntimePort,
 	fs ports.FilesystemPort,
 	cfg *domain.Config,
-	envFn func() *domain.ProtonEnv,
+	envFn func() *domain.WineEnv,
 ) *LaunchService {
 	return &LaunchService{
 		runtime: runtime,
@@ -35,38 +36,49 @@ func NewLaunchService(
 	}
 }
 
-// Launch starts Battle.net via Proton.
+// Launch starts Battle.net via Wine.
 func (s *LaunchService) Launch() error {
-	// Check proton is available
+	log := logger.Log
+
+	// Check wine is available
+	log.Debug("checking wine runtime")
 	runtime, err := s.runtime.Detect()
 	if err != nil {
-		return fmt.Errorf("detect proton: %w", err)
+		log.Error("wine runtime detection failed", "error", err)
+		return fmt.Errorf("detect wine: %w", err)
 	}
 	_ = runtime
 
 	// Check Battle.net is installed
 	inst := s.getInstallation()
+	log.Debug("checking installation", "exe", inst.ExePath, "installed", inst.Installed)
 	if !inst.Installed {
 		return fmt.Errorf("Battle.net is not installed. Run 'bnetctl install' first")
 	}
 
 	// Check if already running
+	log.Debug("checking if already running")
 	if s.runtime.IsProcessRunning(s.cfg.PrefixDir) {
 		return fmt.Errorf("Battle.net is already running")
 	}
 
 	// Build environment
-	var env *domain.ProtonEnv
+	log.Debug("building gpu environment")
+	var env *domain.WineEnv
 	if s.envFn != nil {
 		env = s.envFn()
 	}
+	log.Debug("ensuring battle.net config")
 	if err := EnsureBattleNetConfig(s.cfg.PrefixDir); err != nil {
+		log.Error("ensure battle.net config failed", "error", err)
 		return fmt.Errorf("ensure Battle.net config: %w", err)
 	}
 
-	// Launch proton as async so we get access to the process for cleanup
-	done, err := s.runtime.RunExeAsync(domain.VerbRun, s.cfg.PrefixDir, inst.ExePath, env)
+	// Launch wine async so we get access to the process for cleanup
+	log.Info("launching battle.net async", "exe", inst.ExePath)
+	done, err := s.runtime.RunExeAsync(s.cfg.PrefixDir, inst.ExePath, env)
 	if err != nil {
+		log.Error("launch battle.net failed", "error", err)
 		return fmt.Errorf("launch Battle.net: %w", err)
 	}
 
@@ -75,17 +87,20 @@ func (s *LaunchService) Launch() error {
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(sigCh)
 
-	// Wait for either proton to exit or a signal
+	// Wait for either wine to exit or a signal
 	var runErr error
 	select {
 	case runErr = <-done:
-		// Proton exited on its own
+		log.Info("wine process exited", "error", runErr)
+		// Wine exited on its own
 	case <-sigCh:
+		log.Info("received signal, shutting down")
 		// Signal received — cleanup below
 	}
 
 	// Best-effort cleanup: kill wineserver + orphaned processes
 	fmt.Println("\nShutting down Battle.net...")
+	log.Debug("graceful kill initiated")
 	_ = s.runtime.GracefulKillPrefix(s.cfg.PrefixDir, 5*time.Second)
 
 	return runErr
