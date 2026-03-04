@@ -3,10 +3,12 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
 	"github.com/bnema/bnetctl/internal/adapters/http"
+	"github.com/bnema/bnetctl/internal/adapters/icoutils"
 	"github.com/bnema/bnetctl/internal/adapters/wine"
 	"github.com/bnema/bnetctl/internal/adapters/xdg"
 	"github.com/bnema/bnetctl/internal/domain"
@@ -125,7 +127,10 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		// Auto-create desktop entry
 		desktop := xdg.NewDesktop()
 		if !desktop.EntryExists("bnetctl") {
-			iconPath := extractIcon(cfg)
+			extractor := icoutils.NewExtractor()
+			exePath := filepath.Join(cfg.PrefixDir, "pfx", domain.BattleNetExeRelPath)
+			destPath := filepath.Join(cfg.DataDir, "battlenet.png")
+			iconPath, _ := extractor.ExtractIcon(exePath, destPath)
 			if err := createDesktopEntry(desktop, iconPath); err != nil {
 				log.Warn("failed to create desktop entry", "error", err)
 			} else {

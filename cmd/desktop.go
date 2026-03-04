@@ -3,11 +3,11 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 
 	"github.com/spf13/cobra"
 
+	"github.com/bnema/bnetctl/internal/adapters/icoutils"
 	"github.com/bnema/bnetctl/internal/adapters/xdg"
 	"github.com/bnema/bnetctl/internal/domain"
 	"github.com/bnema/bnetctl/internal/logger"
@@ -54,7 +54,10 @@ func runDesktopAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	iconPath := extractIcon(cfg)
+	extractor := icoutils.NewExtractor()
+	exePath := filepath.Join(cfg.PrefixDir, "pfx", domain.BattleNetExeRelPath)
+	destPath := filepath.Join(cfg.DataDir, "battlenet.png")
+	iconPath, _ := extractor.ExtractIcon(exePath, destPath)
 	if err := createDesktopEntry(desktop, iconPath); err != nil {
 		return err
 	}
@@ -97,108 +100,4 @@ func createDesktopEntry(desktop ports.DesktopPort, iconPath string) error {
 		return fmt.Errorf("create desktop entry: %w", err)
 	}
 	return nil
-}
-
-// extractIcon attempts to extract the Battle.net icon from Battle.net.exe
-// using wrestool + icotool (from icoutils package). Returns the icon path
-// on success, or a generic fallback icon name if extraction fails.
-func extractIcon(cfg *domain.Config) string {
-	log := logger.Log
-
-	destPath := filepath.Join(cfg.DataDir, "battlenet.png")
-
-	// If icon already exists, reuse it
-	if _, err := os.Stat(destPath); err == nil {
-		return destPath
-	}
-
-	exePath := filepath.Join(cfg.PrefixDir, "pfx", domain.BattleNetExeRelPath)
-	if _, err := os.Stat(exePath); err != nil {
-		log.Debug("battle.net exe not found, using fallback icon")
-		return "applications-games"
-	}
-
-	// Check if icoutils is available
-	wrestool, err := exec.LookPath("wrestool")
-	if err != nil {
-		log.Warn("wrestool not found, using fallback icon")
-		fmt.Fprintln(os.Stderr, styles.Warning.Render("Icon extraction skipped: icoutils not installed"))
-		fmt.Fprintln(os.Stderr, styles.Muted.Render("  Install it: sudo pacman -S icoutils"))
-		return "applications-games"
-	}
-	icotool, err := exec.LookPath("icotool")
-	if err != nil {
-		log.Warn("icotool not found, using fallback icon")
-		fmt.Fprintln(os.Stderr, styles.Warning.Render("Icon extraction skipped: icoutils not installed"))
-		fmt.Fprintln(os.Stderr, styles.Muted.Render("  Install it: sudo pacman -S icoutils"))
-		return "applications-games"
-	}
-
-	// Extract .ico from exe
-	tmpIco := filepath.Join(os.TempDir(), "bnetctl-icon.ico")
-	defer func() { _ = os.Remove(tmpIco) }()
-
-	// wrestool -x -t 14 -o /tmp/bnetctl-icon.ico "Battle.net.exe"
-	// Type 14 = RT_GROUP_ICON
-	wrestoolCmd := exec.Command(wrestool, "-x", "-t", "14", "-o", tmpIco, exePath)
-	if err := wrestoolCmd.Run(); err != nil {
-		log.Debug("wrestool extraction failed", "error", err)
-		return "applications-games"
-	}
-
-	// Convert .ico to .png (pick largest resolution)
-	// icotool -x -o /tmp/ /tmp/bnetctl-icon.ico produces multiple PNGs
-	tmpDir, err := os.MkdirTemp("", "bnetctl-icons-")
-	if err != nil {
-		return "applications-games"
-	}
-	defer func() { _ = os.RemoveAll(tmpDir) }()
-
-	icotoolCmd := exec.Command(icotool, "-x", "-o", tmpDir, tmpIco)
-	if err := icotoolCmd.Run(); err != nil {
-		log.Debug("icotool conversion failed", "error", err)
-		return "applications-games"
-	}
-
-	// Find the largest PNG extracted
-	entries, err := os.ReadDir(tmpDir)
-	if err != nil || len(entries) == 0 {
-		return "applications-games"
-	}
-
-	var bestFile string
-	var bestSize int64
-	for _, entry := range entries {
-		if filepath.Ext(entry.Name()) != ".png" {
-			continue
-		}
-		info, err := entry.Info()
-		if err != nil {
-			continue
-		}
-		if info.Size() > bestSize {
-			bestSize = info.Size()
-			bestFile = filepath.Join(tmpDir, entry.Name())
-		}
-	}
-
-	if bestFile == "" {
-		return "applications-games"
-	}
-
-	// Copy best icon to destination
-	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
-		return "applications-games"
-	}
-
-	data, err := os.ReadFile(bestFile)
-	if err != nil {
-		return "applications-games"
-	}
-	if err := os.WriteFile(destPath, data, 0o644); err != nil {
-		return "applications-games"
-	}
-
-	log.Info("extracted battle.net icon", "path", destPath, "size", bestSize)
-	return destPath
 }
