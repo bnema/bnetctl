@@ -53,6 +53,18 @@ func (f *Filesystem) HomeDir() (string, error) {
 	return os.UserHomeDir()
 }
 
+func (f *Filesystem) MkdirAll(path string, perm os.FileMode) error {
+	return os.MkdirAll(path, perm)
+}
+
+func (f *Filesystem) ReadFile(path string) ([]byte, error) {
+	return os.ReadFile(path)
+}
+
+func (f *Filesystem) WriteFile(path string, data []byte, perm os.FileMode) error {
+	return os.WriteFile(path, data, perm)
+}
+
 // DefaultConfig returns a Config with XDG-compliant default paths
 func DefaultConfig() (*domain.Config, error) {
 	home, err := os.UserHomeDir()

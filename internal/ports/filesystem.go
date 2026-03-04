@@ -1,6 +1,10 @@
 package ports
 
-import "github.com/bnema/bnetctl/internal/domain"
+import (
+	"os"
+
+	"github.com/bnema/bnetctl/internal/domain"
+)
 
 // FilesystemPort defines operations for filesystem and directory management
 type FilesystemPort interface {
@@ -15,4 +19,13 @@ type FilesystemPort interface {
 
 	// HomeDir returns the user's home directory
 	HomeDir() (string, error)
+
+	// MkdirAll creates a directory and all parent directories
+	MkdirAll(path string, perm os.FileMode) error
+
+	// ReadFile reads the full contents of a file
+	ReadFile(path string) ([]byte, error)
+
+	// WriteFile writes data to a file atomically with given permissions
+	WriteFile(path string, data []byte, perm os.FileMode) error
 }

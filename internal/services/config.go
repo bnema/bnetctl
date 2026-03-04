@@ -3,11 +3,11 @@ package services
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 
 	"github.com/bnema/bnetctl/internal/domain"
 	"github.com/bnema/bnetctl/internal/logger"
+	"github.com/bnema/bnetctl/internal/ports"
 )
 
 // defaultBattleNetConfig is the baseline config for Battle.net under Wine.
@@ -40,7 +40,7 @@ var defaultBattleNetConfig = map[string]any{
 
 // EnsureBattleNetConfig ensures required config values are present.
 // Creates the file if missing, or merges required keys into existing config.
-func EnsureBattleNetConfig(prefixDir string) error {
+func EnsureBattleNetConfig(prefixDir string, fs ports.FilesystemPort) error {
 	log := logger.Log
 
 	username := domain.WineUsername()
@@ -50,13 +50,13 @@ func EnsureBattleNetConfig(prefixDir string) error {
 	)
 	log.Debug("ensuring battle.net config", "path", configPath, "username", username)
 
-	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+	if err := fs.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
 		return fmt.Errorf("create Battle.net config directory: %w", err)
 	}
 
 	// Load existing config or start fresh
 	existing := make(map[string]any)
-	data, err := os.ReadFile(configPath)
+	data, err := fs.ReadFile(configPath)
 	if err == nil {
 		_ = json.Unmarshal(data, &existing)
 		log.Debug("loaded existing config", "keys", len(existing))
@@ -70,7 +70,7 @@ func EnsureBattleNetConfig(prefixDir string) error {
 		return fmt.Errorf("marshal Battle.net config: %w", err)
 	}
 
-	if err := os.WriteFile(configPath, out, 0o644); err != nil {
+	if err := fs.WriteFile(configPath, out, 0o644); err != nil {
 		return fmt.Errorf("write Battle.net config: %w", err)
 	}
 	log.Info("battle.net config written", "path", configPath)

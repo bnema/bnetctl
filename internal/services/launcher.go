@@ -70,7 +70,7 @@ func (s *LaunchService) Launch() error {
 		env = s.envFn()
 	}
 	log.Debug("ensuring battle.net config")
-	if err := EnsureBattleNetConfig(s.cfg.PrefixDir); err != nil {
+	if err := EnsureBattleNetConfig(s.cfg.PrefixDir, s.fs); err != nil {
 		log.Error("ensure battle.net config failed", "error", err)
 		return fmt.Errorf("ensure Battle.net config: %w", err)
 	}

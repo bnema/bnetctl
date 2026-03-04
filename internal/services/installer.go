@@ -151,7 +151,7 @@ func (s *InstallerService) Install(progressFn func(InstallProgress)) (*domain.In
 
 	_ = s.runtime.GracefulKillPrefix(s.cfg.PrefixDir, 10*time.Second)
 
-	if err := EnsureBattleNetConfig(s.cfg.PrefixDir); err != nil {
+	if err := EnsureBattleNetConfig(s.cfg.PrefixDir, s.fs); err != nil {
 		log.Error("ensure battle.net config failed", "error", err)
 		return nil, fmt.Errorf("ensure Battle.net config: %w", err)
 	}
