@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/bnema/bnetctl/internal/domain"
@@ -157,6 +158,7 @@ func (a *Adapter) WaitPrefix(prefixPath string) error {
 }
 
 // GracefulKillPrefix attempts a graceful stop, waits up to timeout, then force kills.
+// Also cleans up orphaned .exe processes that survive wineserver shutdown.
 func (a *Adapter) GracefulKillPrefix(prefixPath string, timeout time.Duration) error {
 	_ = a.KillPrefix(prefixPath)
 
@@ -167,17 +169,65 @@ func (a *Adapter) GracefulKillPrefix(prefixPath string, timeout time.Duration) e
 
 	select {
 	case <-done:
-		return nil
 	case <-time.After(timeout):
 		runtime, err := a.Detect()
 		if err != nil {
-			return err
+			break
 		}
 		env := a.buildBaseEnv(runtime, prefixPath)
 		wineserverBin := filepath.Join(runtime.BinDir, "wineserver")
 		cmd := exec.Command(wineserverBin, "-k9")
 		cmd.Env = envMapToSlice(env)
-		return cmd.Run()
+		_ = cmd.Run()
+	}
+
+	// Kill orphaned Wine processes that belong to this prefix.
+	// After wineserver dies, child .exe processes (explorer.exe, services.exe, etc.)
+	// can become orphans with stale systray icons.
+	a.killOrphanedProcesses(prefixPath)
+	return nil
+}
+
+// killOrphanedProcesses finds and kills any .exe processes whose environment
+// contains STEAM_COMPAT_DATA_PATH matching our prefix.
+func (a *Adapter) killOrphanedProcesses(prefixPath string) {
+	entries, err := os.ReadDir("/proc")
+	if err != nil {
+		return
+	}
+
+	marker := "STEAM_COMPAT_DATA_PATH=" + prefixPath
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		// Skip non-numeric dirs
+		pid := entry.Name()
+		if pid[0] < '1' || pid[0] > '9' {
+			continue
+		}
+
+		environPath := filepath.Join("/proc", pid, "environ")
+		data, err := os.ReadFile(environPath)
+		if err != nil {
+			continue
+		}
+
+		if strings.Contains(string(data), marker) {
+			// This process belongs to our prefix — kill it
+			cmdline, _ := os.ReadFile(filepath.Join("/proc", pid, "cmdline"))
+			if strings.Contains(string(cmdline), ".exe") {
+				pidNum := 0
+				for _, c := range pid {
+					pidNum = pidNum*10 + int(c-'0')
+				}
+				proc, err := os.FindProcess(pidNum)
+				if err == nil {
+					_ = proc.Signal(syscall.SIGKILL)
+				}
+			}
+		}
 	}
 }
 
