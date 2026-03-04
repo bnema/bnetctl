@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -53,13 +54,13 @@ func (s *LaunchService) Launch() error {
 	inst := s.getInstallation()
 	log.Debug("checking installation", "exe", inst.ExePath, "installed", inst.Installed)
 	if !inst.Installed {
-		return fmt.Errorf("Battle.net is not installed. Run 'bnetctl install' first")
+		return fmt.Errorf("battle.net is not installed. Run 'bnetctl install' first")
 	}
 
 	// Check if already running
 	log.Debug("checking if already running")
 	if s.runtime.IsProcessRunning(s.cfg.PrefixDir) {
-		return fmt.Errorf("Battle.net is already running")
+		return fmt.Errorf("battle.net is already running")
 	}
 
 	// Build environment
@@ -107,7 +108,7 @@ func (s *LaunchService) Launch() error {
 }
 
 func (s *LaunchService) getInstallation() *domain.Installation {
-	exePath := s.cfg.PrefixDir + "/pfx/" + domain.BattleNetExeRelPath
+	exePath := filepath.Join(s.cfg.PrefixDir, "pfx", domain.BattleNetExeRelPath)
 	return &domain.Installation{
 		PrefixPath: s.cfg.PrefixDir,
 		ExePath:    exePath,
