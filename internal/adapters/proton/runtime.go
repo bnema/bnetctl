@@ -216,16 +216,17 @@ func (a *Adapter) killOrphanedProcesses(prefixPath string) {
 
 		if strings.Contains(string(data), marker) {
 			// This process belongs to our prefix — kill it
-			cmdline, _ := os.ReadFile(filepath.Join("/proc", pid, "cmdline"))
-			if strings.Contains(string(cmdline), ".exe") {
-				pidNum := 0
-				for _, c := range pid {
-					pidNum = pidNum*10 + int(c-'0')
-				}
-				proc, err := os.FindProcess(pidNum)
-				if err == nil {
-					_ = proc.Signal(syscall.SIGKILL)
-				}
+			pidNum := 0
+			for _, c := range pid {
+				pidNum = pidNum*10 + int(c-'0')
+			}
+			// Don't kill ourselves
+			if pidNum == os.Getpid() {
+				continue
+			}
+			proc, err := os.FindProcess(pidNum)
+			if err == nil {
+				_ = proc.Signal(syscall.SIGKILL)
 			}
 		}
 	}

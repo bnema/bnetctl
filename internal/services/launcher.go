@@ -64,22 +64,28 @@ func (s *LaunchService) Launch() error {
 		return fmt.Errorf("ensure Battle.net config: %w", err)
 	}
 
+	// Launch proton as async so we get access to the process for cleanup
+	done, err := s.runtime.RunExeAsync(domain.VerbRun, s.cfg.PrefixDir, inst.ExePath, env)
+	if err != nil {
+		return fmt.Errorf("launch Battle.net: %w", err)
+	}
+
+	// Trap signals for graceful shutdown
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(sigCh)
 
-	errCh := make(chan error, 1)
-	go func() {
-		errCh <- s.runtime.RunExe(domain.VerbRun, s.cfg.PrefixDir, inst.ExePath, env)
-	}()
-
+	// Wait for either proton to exit or a signal
 	var runErr error
 	select {
-	case runErr = <-errCh:
-	case sig := <-sigCh:
-		_ = sig
+	case runErr = <-done:
+		// Proton exited on its own
+	case <-sigCh:
+		// Signal received — cleanup below
 	}
 
+	// Best-effort cleanup: kill wineserver + orphaned processes
+	fmt.Println("\nShutting down Battle.net...")
 	_ = s.runtime.GracefulKillPrefix(s.cfg.PrefixDir, 5*time.Second)
 
 	return runErr
