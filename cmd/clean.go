@@ -37,11 +37,11 @@ func runClean(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	runtime := wine.NewAdapter()
+	runtime := wine.NewAdapter(getLogger())
 	desktop := xdg.NewDesktop()
 	fs := xdg.NewFilesystem()
 
-	cleaner := services.NewCleanerService(runtime, desktop, fs, cfg)
+	cleaner := services.NewCleanerService(runtime, desktop, fs, cfg, getLogger())
 	log.Info("cleaning", "all", cleanAll, "prefix", cfg.PrefixDir)
 
 	if cleanAll {

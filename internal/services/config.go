@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/charmbracelet/log"
+
 	"github.com/bnema/bnetctl/internal/domain"
-	"github.com/bnema/bnetctl/internal/logger"
 	"github.com/bnema/bnetctl/internal/ports"
 )
 
@@ -40,8 +41,7 @@ var defaultBattleNetConfig = map[string]any{
 
 // EnsureBattleNetConfig ensures required config values are present.
 // Creates the file if missing, or merges required keys into existing config.
-func EnsureBattleNetConfig(prefixDir string, fs ports.FilesystemPort) error {
-	log := logger.Log
+func EnsureBattleNetConfig(prefixDir string, fs ports.FilesystemPort, log *log.Logger) error {
 
 	username := domain.WineUsername()
 	configPath := filepath.Join(

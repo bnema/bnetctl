@@ -8,8 +8,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/charmbracelet/log"
+
 	"github.com/bnema/bnetctl/internal/domain"
-	"github.com/bnema/bnetctl/internal/logger"
 	"github.com/bnema/bnetctl/internal/ports"
 )
 
@@ -19,6 +20,7 @@ type LaunchService struct {
 	fs      ports.FilesystemPort
 	cfg     *domain.Config
 	envFn   func() *domain.WineEnv
+	log     *log.Logger
 }
 
 // LaunchResult holds information about a completed launch.
@@ -33,18 +35,20 @@ func NewLaunchService(
 	fs ports.FilesystemPort,
 	cfg *domain.Config,
 	envFn func() *domain.WineEnv,
+	log *log.Logger,
 ) *LaunchService {
 	return &LaunchService{
 		runtime: runtime,
 		fs:      fs,
 		cfg:     cfg,
 		envFn:   envFn,
+		log:     log,
 	}
 }
 
 // Launch starts Battle.net via Wine.
 func (s *LaunchService) Launch() (*LaunchResult, error) {
-	log := logger.Log
+	log := s.log
 
 	// Check wine is available
 	log.Debug("checking wine runtime")
@@ -74,7 +78,7 @@ func (s *LaunchService) Launch() (*LaunchResult, error) {
 		env = s.envFn()
 	}
 	log.Debug("ensuring battle.net config")
-	if err := EnsureBattleNetConfig(s.cfg.PrefixDir, s.fs); err != nil {
+	if err := EnsureBattleNetConfig(s.cfg.PrefixDir, s.fs, s.log); err != nil {
 		log.Error("ensure battle.net config failed", "error", err)
 		return nil, fmt.Errorf("ensure Battle.net config: %w", err)
 	}

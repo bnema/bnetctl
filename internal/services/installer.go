@@ -5,8 +5,9 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/charmbracelet/log"
+
 	"github.com/bnema/bnetctl/internal/domain"
-	"github.com/bnema/bnetctl/internal/logger"
 	"github.com/bnema/bnetctl/internal/ports"
 )
 
@@ -39,6 +40,7 @@ type InstallerService struct {
 	downloader ports.DownloaderPort
 	fs         ports.FilesystemPort
 	cfg        *domain.Config
+	log        *log.Logger
 }
 
 // NewInstallerService creates a new installer service
@@ -47,12 +49,14 @@ func NewInstallerService(
 	downloader ports.DownloaderPort,
 	fs ports.FilesystemPort,
 	cfg *domain.Config,
+	log *log.Logger,
 ) *InstallerService {
 	return &InstallerService{
 		runtime:    runtime,
 		downloader: downloader,
 		fs:         fs,
 		cfg:        cfg,
+		log:        log,
 	}
 }
 
@@ -65,7 +69,7 @@ func NewInstallerService(
 // 6. Wait for installer to exit gracefully
 // 7. Clean up wineserver
 func (s *InstallerService) Install(progressFn func(InstallProgress)) (*domain.Installation, error) {
-	log := logger.Log
+	log := s.log
 
 	report := func(status InstallStatus, msg string) {
 		if progressFn != nil {
@@ -158,7 +162,7 @@ func (s *InstallerService) Install(progressFn func(InstallProgress)) (*domain.In
 
 	_ = s.runtime.GracefulKillPrefix(s.cfg.PrefixDir, 10*time.Second)
 
-	if err := EnsureBattleNetConfig(s.cfg.PrefixDir, s.fs); err != nil {
+	if err := EnsureBattleNetConfig(s.cfg.PrefixDir, s.fs, s.log); err != nil {
 		log.Error("ensure battle.net config failed", "error", err)
 		return nil, fmt.Errorf("ensure Battle.net config: %w", err)
 	}

@@ -9,24 +9,27 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/charmbracelet/log"
+
 	"github.com/bnema/bnetctl/internal/domain"
-	"github.com/bnema/bnetctl/internal/logger"
 	"github.com/bnema/bnetctl/internal/ports"
 )
 
 // Adapter implements ports.RuntimePort using wine-cachyos directly
-type Adapter struct{}
+type Adapter struct {
+	log *log.Logger
+}
 
 var _ ports.RuntimePort = (*Adapter)(nil)
 
 // NewAdapter creates a new Wine adapter
-func NewAdapter() *Adapter {
-	return &Adapter{}
+func NewAdapter(log *log.Logger) *Adapter {
+	return &Adapter{log: log}
 }
 
 // Detect checks if wine-cachyos is available and returns runtime info
 func (a *Adapter) Detect() (*domain.WineRuntime, error) {
-	log := logger.Log
+	log := a.log
 
 	wineBin, err := exec.LookPath("wine")
 	if err != nil {
@@ -81,7 +84,7 @@ func (a *Adapter) Detect() (*domain.WineRuntime, error) {
 
 // CreatePrefix initializes a new Wine prefix at the given path
 func (a *Adapter) CreatePrefix(prefixPath string) error {
-	log := logger.Log
+	log := a.log
 
 	rt, err := a.Detect()
 	if err != nil {
@@ -165,7 +168,7 @@ func (a *Adapter) CreatePrefix(prefixPath string) error {
 
 // RunExe runs a Windows executable inside the prefix using wine (blocking)
 func (a *Adapter) RunExe(prefixPath string, exePath string, wineEnv *domain.WineEnv) error {
-	log := logger.Log
+	log := a.log
 
 	rt, err := a.Detect()
 	if err != nil {
@@ -185,7 +188,7 @@ func (a *Adapter) RunExe(prefixPath string, exePath string, wineEnv *domain.Wine
 
 // RunExeAsync runs a Windows executable inside the prefix without blocking
 func (a *Adapter) RunExeAsync(prefixPath string, exePath string, wineEnv *domain.WineEnv) (<-chan error, error) {
-	log := logger.Log
+	log := a.log
 
 	rt, err := a.Detect()
 	if err != nil {
@@ -215,7 +218,7 @@ func (a *Adapter) RunExeAsync(prefixPath string, exePath string, wineEnv *domain
 
 // IsProcessRunning checks if a Wine process is running in the given prefix
 func (a *Adapter) IsProcessRunning(prefixPath string) bool {
-	log := logger.Log
+	log := a.log
 
 	wineServerBin, err := exec.LookPath("wineserver")
 	if err != nil {
@@ -233,7 +236,7 @@ func (a *Adapter) IsProcessRunning(prefixPath string) bool {
 
 // KillPrefix stops all Wine processes in the given prefix
 func (a *Adapter) KillPrefix(prefixPath string) error {
-	log := logger.Log
+	log := a.log
 
 	wineServerBin, err := exec.LookPath("wineserver")
 	if err != nil {
@@ -267,7 +270,7 @@ func (a *Adapter) WaitPrefix(prefixPath string) error {
 // GracefulKillPrefix attempts a graceful stop, waits up to timeout, then force kills.
 // Also cleans up orphaned processes that survive wineserver shutdown.
 func (a *Adapter) GracefulKillPrefix(prefixPath string, timeout time.Duration) error {
-	log := logger.Log
+	log := a.log
 	pfxDir := filepath.Join(prefixPath, "pfx")
 	log.Debug("graceful kill initiated", "prefix", pfxDir, "timeout", timeout)
 
@@ -299,7 +302,7 @@ func (a *Adapter) GracefulKillPrefix(prefixPath string, timeout time.Duration) e
 // KillOrphans finds and kills any processes whose environment contains WINEPREFIX
 // matching our prefix. Returns the PIDs of killed processes.
 func (a *Adapter) KillOrphans(prefixPath string) ([]int, error) {
-	log := logger.Log
+	log := a.log
 
 	entries, err := os.ReadDir("/proc")
 	if err != nil {

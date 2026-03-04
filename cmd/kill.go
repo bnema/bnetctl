@@ -38,7 +38,7 @@ func runKill(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	runtime := wine.NewAdapter()
+	runtime := wine.NewAdapter(getLogger())
 	log.Info("killing wine processes", "prefix", cfg.PrefixDir, "all", killAll)
 
 	// Step 1: Try graceful wineserver kill

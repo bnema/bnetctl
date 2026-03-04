@@ -10,7 +10,6 @@ import (
 	"github.com/bnema/bnetctl/internal/adapters/icoutils"
 	"github.com/bnema/bnetctl/internal/adapters/xdg"
 	"github.com/bnema/bnetctl/internal/domain"
-	"github.com/bnema/bnetctl/internal/logger"
 	"github.com/bnema/bnetctl/internal/ports"
 	"github.com/bnema/bnetctl/internal/ui/styles"
 )
@@ -40,7 +39,7 @@ func init() {
 }
 
 func runDesktopAdd(cmd *cobra.Command, args []string) error {
-	log := logger.Log
+	log := getLogger()
 
 	desktop := xdg.NewDesktop()
 
@@ -54,7 +53,7 @@ func runDesktopAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	extractor := icoutils.NewExtractor()
+	extractor := icoutils.NewExtractor(getLogger())
 	exePath := filepath.Join(cfg.PrefixDir, "pfx", domain.BattleNetExeRelPath)
 	destPath := filepath.Join(cfg.DataDir, "battlenet.png")
 	iconPath := extractor.ExtractIcon(exePath, destPath)
@@ -69,7 +68,7 @@ func runDesktopAdd(cmd *cobra.Command, args []string) error {
 }
 
 func runDesktopRemove(cmd *cobra.Command, args []string) error {
-	log := logger.Log
+	log := getLogger()
 
 	desktop := xdg.NewDesktop()
 

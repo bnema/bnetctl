@@ -3,8 +3,9 @@ package services
 import (
 	"fmt"
 
+	"github.com/charmbracelet/log"
+
 	"github.com/bnema/bnetctl/internal/domain"
-	"github.com/bnema/bnetctl/internal/logger"
 	"github.com/bnema/bnetctl/internal/ports"
 )
 
@@ -14,6 +15,7 @@ type CleanerService struct {
 	desktop ports.DesktopPort
 	fs      ports.FilesystemPort
 	cfg     *domain.Config
+	log     *log.Logger
 }
 
 // NewCleanerService creates a new cleaner service
@@ -22,18 +24,20 @@ func NewCleanerService(
 	desktop ports.DesktopPort,
 	fs ports.FilesystemPort,
 	cfg *domain.Config,
+	log *log.Logger,
 ) *CleanerService {
 	return &CleanerService{
 		runtime: runtime,
 		desktop: desktop,
 		fs:      fs,
 		cfg:     cfg,
+		log:     log,
 	}
 }
 
 // CleanCache removes cached files (downloaded installer, logs)
 func (s *CleanerService) CleanCache() error {
-	log := logger.Log
+	log := s.log
 	log.Debug("cleaning cache", "path", s.cfg.CacheDir)
 
 	if s.fs.Exists(s.cfg.CacheDir) {
@@ -46,7 +50,7 @@ func (s *CleanerService) CleanCache() error {
 
 // CleanPrefix removes the Wine prefix (kills running processes first)
 func (s *CleanerService) CleanPrefix() error {
-	log := logger.Log
+	log := s.log
 	log.Debug("cleaning prefix", "path", s.cfg.PrefixDir)
 
 	// Kill any running Wine processes
@@ -67,7 +71,7 @@ func (s *CleanerService) CleanPrefix() error {
 
 // CleanAll removes everything: cache, prefix, desktop entry, data dir
 func (s *CleanerService) CleanAll() error {
-	log := logger.Log
+	log := s.log
 	log.Info("cleaning all bnetctl data")
 
 	if err := s.CleanPrefix(); err != nil {

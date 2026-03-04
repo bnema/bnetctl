@@ -6,7 +6,8 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"github.com/bnema/bnetctl/internal/logger"
+	"github.com/charmbracelet/log"
+
 	"github.com/bnema/bnetctl/internal/ports"
 	"github.com/bnema/bnetctl/internal/ui/styles"
 )
@@ -14,17 +15,19 @@ import (
 var _ ports.IconExtractorPort = (*Extractor)(nil)
 
 // Extractor implements IconExtractorPort using the icoutils (wrestool + icotool) system tools.
-type Extractor struct{}
+type Extractor struct {
+	log *log.Logger
+}
 
 // NewExtractor creates a new Extractor.
-func NewExtractor() *Extractor {
-	return &Extractor{}
+func NewExtractor(log *log.Logger) *Extractor {
+	return &Extractor{log: log}
 }
 
 // ExtractIcon extracts the best-quality icon from exePath and writes it to destPath.
 // Returns the final icon path on success, or "applications-games" (XDG fallback) on failure.
 func (e *Extractor) ExtractIcon(exePath string, destPath string) string {
-	log := logger.Log
+	log := e.log
 
 	// If icon already exists, reuse it
 	if _, err := os.Stat(destPath); err == nil {
