@@ -9,6 +9,7 @@ import (
 	"github.com/bnema/bnetctl/internal/adapters/http"
 	"github.com/bnema/bnetctl/internal/adapters/wine"
 	"github.com/bnema/bnetctl/internal/adapters/xdg"
+	"github.com/bnema/bnetctl/internal/domain"
 	"github.com/bnema/bnetctl/internal/services"
 	"github.com/bnema/bnetctl/internal/ui/styles"
 )
@@ -36,26 +37,6 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	downloader := http.NewDownloader()
 	fs := xdg.NewFilesystem()
 
-	// Detect wine first
-	rt, err := runtime.Detect()
-	if err != nil {
-		log.Error("wine detection failed", "error", err)
-		fmt.Fprintln(os.Stderr, styles.Error.Render("Error: ")+err.Error())
-		fmt.Fprintln(os.Stderr, styles.Muted.Render("Install wine-cachyos: paru -S wine-cachyos"))
-		return err
-	}
-	log.Info("wine detected", "version", rt.Version, "ntsync", rt.HasNTSync, "dxvk_setup", rt.HasDXVKSetup)
-	fmt.Println(styles.StepPrefix.Render("Wine: ") + rt.Version)
-	if rt.HasNTSync {
-		fmt.Println(styles.Muted.Render("  NTSync: enabled"))
-	}
-	if rt.HasDXVKSetup {
-		fmt.Println(styles.Muted.Render("  DXVK: will auto-install"))
-	}
-	if rt.HasVKD3DSetup {
-		fmt.Println(styles.Muted.Render("  VKD3D-proton: will auto-install"))
-	}
-
 	installer := services.NewInstallerService(runtime, downloader, fs, cfg)
 
 	// Check if already installed
@@ -70,8 +51,23 @@ func runInstall(cmd *cobra.Command, args []string) error {
 
 	// Track last status to avoid repeating messages
 	var lastStatus services.InstallStatus = -1
+	var detectedRuntime *domain.WineRuntime
 
 	progressFn := func(p services.InstallProgress) {
+		if detectedRuntime == nil && p.Runtime != nil {
+			detectedRuntime = p.Runtime
+			log.Info("wine detected", "version", detectedRuntime.Version, "ntsync", detectedRuntime.HasNTSync, "dxvk_setup", detectedRuntime.HasDXVKSetup)
+			fmt.Println(styles.StepPrefix.Render("Wine: ") + detectedRuntime.Version)
+			if detectedRuntime.HasNTSync {
+				fmt.Println(styles.Muted.Render("  NTSync: enabled"))
+			}
+			if detectedRuntime.HasDXVKSetup {
+				fmt.Println(styles.Muted.Render("  DXVK: will auto-install"))
+			}
+			if detectedRuntime.HasVKD3DSetup {
+				fmt.Println(styles.Muted.Render("  VKD3D-proton: will auto-install"))
+			}
+		}
 		switch p.Status {
 		case services.InstallDownloading:
 			if lastStatus != p.Status {
@@ -81,10 +77,10 @@ func runInstall(cmd *cobra.Command, args []string) error {
 				if p.Download.TotalBytes > 0 {
 					mb := float64(p.Download.BytesDownloaded) / 1024 / 1024
 					totalMb := float64(p.Download.TotalBytes) / 1024 / 1024
-					fmt.Fprintf(os.Stdout, "\r  Downloading: %.1f / %.1f MB (%.0f%%)", mb, totalMb, p.Download.Percent)
+					_, _ = fmt.Fprintf(os.Stdout, "\r  Downloading: %.1f / %.1f MB (%.0f%%)", mb, totalMb, p.Download.Percent)
 				} else {
 					mb := float64(p.Download.BytesDownloaded) / 1024 / 1024
-					fmt.Fprintf(os.Stdout, "\r  Downloading: %.1f MB", mb)
+					_, _ = fmt.Fprintf(os.Stdout, "\r  Downloading: %.1f MB", mb)
 				}
 			}
 		case services.InstallCreatingPrefix:

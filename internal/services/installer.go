@@ -28,6 +28,8 @@ type InstallProgress struct {
 	Message string
 	// Download is non-nil during the download phase
 	Download *domain.DownloadProgress
+	// Runtime is non-nil on first progress event after wine detection
+	Runtime *domain.WineRuntime
 }
 
 // InstallerService orchestrates the Battle.net installation process
@@ -72,9 +74,13 @@ func (s *InstallerService) Install(progressFn func(InstallProgress)) (*domain.In
 
 	// Step 1: Detect runtime
 	log.Debug("detecting wine runtime")
-	if _, err := s.runtime.Detect(); err != nil {
+	rt, err := s.runtime.Detect()
+	if err != nil {
 		log.Error("wine runtime detection failed", "error", err)
 		return nil, fmt.Errorf("detect wine: %w", err)
+	}
+	if progressFn != nil {
+		progressFn(InstallProgress{Status: InstallDownloading, Message: "Wine detected", Runtime: rt})
 	}
 
 	// Step 2: Ensure directories

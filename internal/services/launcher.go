@@ -21,6 +21,11 @@ type LaunchService struct {
 	envFn   func() *domain.WineEnv
 }
 
+// LaunchResult holds information about a completed launch.
+type LaunchResult struct {
+	Runtime *domain.WineRuntime
+}
+
 // NewLaunchService creates a new launch service.
 // envFn is a function that returns GPU/system-specific environment variables.
 func NewLaunchService(
@@ -38,29 +43,28 @@ func NewLaunchService(
 }
 
 // Launch starts Battle.net via Wine.
-func (s *LaunchService) Launch() error {
+func (s *LaunchService) Launch() (*LaunchResult, error) {
 	log := logger.Log
 
 	// Check wine is available
 	log.Debug("checking wine runtime")
-	runtime, err := s.runtime.Detect()
+	rt, err := s.runtime.Detect()
 	if err != nil {
 		log.Error("wine runtime detection failed", "error", err)
-		return fmt.Errorf("detect wine: %w", err)
+		return nil, fmt.Errorf("detect wine: %w", err)
 	}
-	_ = runtime
 
 	// Check Battle.net is installed
 	inst := s.getInstallation()
 	log.Debug("checking installation", "exe", inst.ExePath, "installed", inst.Installed)
 	if !inst.Installed {
-		return fmt.Errorf("battle.net is not installed. Run 'bnetctl install' first")
+		return nil, fmt.Errorf("battle.net is not installed. Run 'bnetctl install' first")
 	}
 
 	// Check if already running
 	log.Debug("checking if already running")
 	if s.runtime.IsProcessRunning(s.cfg.PrefixDir) {
-		return fmt.Errorf("battle.net is already running")
+		return nil, fmt.Errorf("battle.net is already running")
 	}
 
 	// Build environment
@@ -72,7 +76,7 @@ func (s *LaunchService) Launch() error {
 	log.Debug("ensuring battle.net config")
 	if err := EnsureBattleNetConfig(s.cfg.PrefixDir, s.fs); err != nil {
 		log.Error("ensure battle.net config failed", "error", err)
-		return fmt.Errorf("ensure Battle.net config: %w", err)
+		return nil, fmt.Errorf("ensure Battle.net config: %w", err)
 	}
 
 	// Launch wine async so we get access to the process for cleanup
@@ -80,7 +84,7 @@ func (s *LaunchService) Launch() error {
 	done, err := s.runtime.RunExeAsync(s.cfg.PrefixDir, inst.ExePath, env)
 	if err != nil {
 		log.Error("launch battle.net failed", "error", err)
-		return fmt.Errorf("launch Battle.net: %w", err)
+		return nil, fmt.Errorf("launch Battle.net: %w", err)
 	}
 
 	// Trap signals for graceful shutdown
@@ -104,7 +108,7 @@ func (s *LaunchService) Launch() error {
 	log.Debug("graceful kill initiated")
 	_ = s.runtime.GracefulKillPrefix(s.cfg.PrefixDir, 5*time.Second)
 
-	return runErr
+	return &LaunchResult{Runtime: rt}, runErr
 }
 
 func (s *LaunchService) getInstallation() *domain.Installation {
