@@ -6,16 +6,20 @@ Built for **Wayland** tiling WMs (niri, Hyprland) with XWayland. Works on X11 to
 
 ## Dependencies
 
+**CachyOS** (all packages available in the CachyOS repos):
+
 ```bash
-# Required
+# Required — Valve's Wine fork with NTSync, Proton patches, WoW64
 sudo pacman -S wine-cachyos
 
-# Required (game performance — DXVK/VKD3D translate D3D to Vulkan)
+# Required — DXVK/VKD3D translate Direct3D to Vulkan (critical for frame pacing)
 sudo pacman -S dxvk-mingw-git vkd3d-proton-mingw-git
 
-# Optional (extracts Battle.net icon for .desktop entry)
+# Optional — extracts Battle.net icon for the .desktop entry
 sudo pacman -S icoutils
 ```
+
+**Arch Linux** (non-CachyOS): `wine-cachyos` requires the [CachyOS repositories](https://wiki.cachyos.net/adding_repo/). The closest alternative is `wine-tkg-git` (AUR) — untested.
 
 ## Install
 
