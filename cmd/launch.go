@@ -3,14 +3,12 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/spf13/cobra"
 
 	"github.com/bnema/bnetctl/internal/adapters/env"
 	"github.com/bnema/bnetctl/internal/adapters/wine"
 	"github.com/bnema/bnetctl/internal/adapters/xdg"
-	"github.com/bnema/bnetctl/internal/domain"
 	"github.com/bnema/bnetctl/internal/services"
 	"github.com/bnema/bnetctl/internal/ui/styles"
 )
@@ -52,8 +50,7 @@ func runLaunch(cmd *cobra.Command, args []string) error {
 	launcher := services.NewLaunchService(runtime, fs, cfg, env.BuildGPUEnv)
 
 	// Launch replaces the process on success
-	exePath := filepath.Join(cfg.PrefixDir, "pfx", domain.BattleNetExeRelPath)
-	log.Info("launching battle.net", "exe", exePath)
+	log.Info("launching battle.net")
 	if err := launcher.Launch(); err != nil {
 		log.Error("launch failed", "error", err)
 		fmt.Fprintln(os.Stderr, styles.Error.Render("Launch failed: ")+err.Error())
