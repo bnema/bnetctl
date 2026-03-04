@@ -26,6 +26,6 @@ type FilesystemPort interface {
 	// ReadFile reads the full contents of a file
 	ReadFile(path string) ([]byte, error)
 
-	// WriteFile writes data to a file atomically with given permissions
+	// WriteFile writes data to a file with the given permissions
 	WriteFile(path string, data []byte, perm os.FileMode) error
 }

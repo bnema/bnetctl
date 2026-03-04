@@ -51,7 +51,7 @@ func runKill(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Step 2: --all mode — scan /proc and kill anything belonging to our prefix
+	// Step 2: --all mode — kill any orphaned processes belonging to our prefix
 	fmt.Println("Scanning for orphaned processes...")
 	killed, err := runtime.KillOrphans(cfg.PrefixDir)
 	if err != nil {
