@@ -1,6 +1,10 @@
 package ports
 
-import "github.com/bnema/bnetctl/internal/domain"
+import (
+	"time"
+
+	"github.com/bnema/bnetctl/internal/domain"
+)
 
 // RuntimePort defines operations for running Windows executables via a compatibility layer
 type RuntimePort interface {
@@ -27,4 +31,8 @@ type RuntimePort interface {
 
 	// WaitPrefix blocks until the wineserver for the given prefix exits
 	WaitPrefix(prefixPath string) error
+
+	// GracefulKillPrefix attempts a graceful stop (SIGTERM), waits up to timeout,
+	// then force kills (SIGKILL) any remaining processes in the prefix.
+	GracefulKillPrefix(prefixPath string, timeout time.Duration) error
 }

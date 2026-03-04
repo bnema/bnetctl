@@ -129,10 +129,9 @@ func (s *InstallerService) Install(progressFn func(InstallProgress)) (*domain.In
 					return nil, fmt.Errorf("Battle.net installer failed: %w", exitErr)
 				}
 			}
-			// Process exited — kill wineserver and wait for it to fully terminate
+			// Process exited — clean up wineserver processes
 			report(InstallDone, "Cleaning up...")
-			_ = s.runtime.KillPrefix(s.cfg.PrefixDir)
-			_ = s.runtime.WaitPrefix(s.cfg.PrefixDir)
+			_ = s.runtime.GracefulKillPrefix(s.cfg.PrefixDir, 5*time.Second)
 			if err := EnsureBattleNetConfig(s.cfg.PrefixDir); err != nil {
 				return nil, fmt.Errorf("ensure Battle.net config: %w", err)
 			}
@@ -142,8 +141,7 @@ func (s *InstallerService) Install(progressFn func(InstallProgress)) (*domain.In
 			if s.fs.Exists(exePath) {
 				// Battle.net.exe found — installation succeeded
 				report(InstallDone, "Battle.net client detected, cleaning up...")
-				_ = s.runtime.KillPrefix(s.cfg.PrefixDir)
-				_ = s.runtime.WaitPrefix(s.cfg.PrefixDir)
+				_ = s.runtime.GracefulKillPrefix(s.cfg.PrefixDir, 5*time.Second)
 				if err := EnsureBattleNetConfig(s.cfg.PrefixDir); err != nil {
 					return nil, fmt.Errorf("ensure Battle.net config: %w", err)
 				}

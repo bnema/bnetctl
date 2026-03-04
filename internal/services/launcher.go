@@ -2,6 +2,10 @@ package services
 
 import (
 	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/bnema/bnetctl/internal/domain"
 	"github.com/bnema/bnetctl/internal/ports"
@@ -32,7 +36,6 @@ func NewLaunchService(
 }
 
 // Launch starts Battle.net via Proton.
-// This replaces the current process (syscall.Exec) so it does not return on success.
 func (s *LaunchService) Launch() error {
 	// Check proton is available
 	runtime, err := s.runtime.Detect()
@@ -61,8 +64,25 @@ func (s *LaunchService) Launch() error {
 		return fmt.Errorf("ensure Battle.net config: %w", err)
 	}
 
-	// Launch — this replaces the process
-	return s.runtime.RunExe(domain.VerbRun, s.cfg.PrefixDir, inst.ExePath, env)
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(sigCh)
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- s.runtime.RunExe(domain.VerbRun, s.cfg.PrefixDir, inst.ExePath, env)
+	}()
+
+	var runErr error
+	select {
+	case runErr = <-errCh:
+	case sig := <-sigCh:
+		_ = sig
+	}
+
+	_ = s.runtime.GracefulKillPrefix(s.cfg.PrefixDir, 5*time.Second)
+
+	return runErr
 }
 
 func (s *LaunchService) getInstallation() *domain.Installation {

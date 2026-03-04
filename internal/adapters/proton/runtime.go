@@ -6,7 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
+	"time"
 
 	"github.com/bnema/bnetctl/internal/domain"
 	"github.com/bnema/bnetctl/internal/ports"
@@ -79,19 +79,8 @@ func (a *Adapter) CreatePrefix(prefixPath string) error {
 func (a *Adapter) RunExe(verb string, prefixPath string, exePath string, protonEnv *domain.ProtonEnv) error {
 	env := a.buildProtonEnv(prefixPath, protonEnv)
 	protonScript := filepath.Join(a.protonPath, "proton")
-	argv := []string{protonScript, verb, exePath}
 
-	// Use syscall.Exec to replace current process for "run" verb (launch)
-	if verb == domain.VerbRun || verb == domain.VerbWaitForExitAndRun {
-		python, err := exec.LookPath("python3")
-		if err != nil {
-			return fmt.Errorf("python3 not found: %w", err)
-		}
-		fullArgv := append([]string{python}, argv...)
-		return syscall.Exec(python, fullArgv, envMapToSlice(env))
-	}
-
-	cmd := exec.Command("python3", argv...)
+	cmd := exec.Command("python3", protonScript, verb, exePath)
 	cmd.Env = envMapToSlice(env)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -165,6 +154,31 @@ func (a *Adapter) WaitPrefix(prefixPath string) error {
 	cmd := exec.Command(wineserverBin, "-w")
 	cmd.Env = envMapToSlice(env)
 	return cmd.Run()
+}
+
+// GracefulKillPrefix attempts a graceful stop, waits up to timeout, then force kills.
+func (a *Adapter) GracefulKillPrefix(prefixPath string, timeout time.Duration) error {
+	_ = a.KillPrefix(prefixPath)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- a.WaitPrefix(prefixPath)
+	}()
+
+	select {
+	case <-done:
+		return nil
+	case <-time.After(timeout):
+		runtime, err := a.Detect()
+		if err != nil {
+			return err
+		}
+		env := a.buildBaseEnv(runtime, prefixPath)
+		wineserverBin := filepath.Join(runtime.BinDir, "wineserver")
+		cmd := exec.Command(wineserverBin, "-k9")
+		cmd.Env = envMapToSlice(env)
+		return cmd.Run()
+	}
 }
 
 // buildProtonEnv builds the full environment for running the proton script.

@@ -1,41 +1,98 @@
 package services
 
 import (
-	"errors"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 )
 
-const battleNetConfigContent = `{"Client":{"HardwareAcceleration":"false","Sound":{"Enabled":"true"},"GameLaunchWindowBehavior":"2","Streaming":"false"}}`
+// defaultBattleNetConfig is the baseline config for Battle.net under Wine/Proton.
+// HardwareAcceleration must be false (CEF GPU rendering fails under Wine).
+// LastLoginTassadar/LastLoginAddress are required because Battle.net's backend
+// cert validation fails under Wine — these cached values provide the fallback
+// login URL that lets the auth flow recover.
+var defaultBattleNetConfig = map[string]any{
+	"Client": map[string]any{
+		"HardwareAcceleration":     "false",
+		"GameLaunchWindowBehavior": "2",
+		"Streaming":                "false",
+	},
+	"5a61123b37cafce1": map[string]any{
+		"Client": map[string]any{
+			"Language": "enUS",
+			"LoginSettings": map[string]any{
+				"AllowedRegions": "",
+				"AllowedLocales": "",
+			},
+		},
+		"Services": map[string]any{
+			"LastLoginRegion":   "US",
+			"LastLoginAddress":  "us.actual.battle.net",
+			"LastLoginTassadar": "account.battle.net",
+		},
+	},
+	"Games": map[string]any{
+		"battle_net": map[string]any{
+			"ServerUid": "battle.net",
+		},
+	},
+}
 
-// EnsureBattleNetConfig writes a default Battle.net.config if it is missing.
+// EnsureBattleNetConfig ensures required config values are present.
+// Creates the file if missing, or merges required keys into existing config.
 func EnsureBattleNetConfig(prefixDir string) error {
 	configPath := filepath.Join(
-		prefixDir,
-		"pfx",
-		"drive_c",
-		"users",
-		"steamuser",
-		"AppData",
-		"Roaming",
-		"Battle.net",
-		"Battle.net.config",
+		prefixDir, "pfx", "drive_c", "users", "steamuser",
+		"AppData", "Roaming", "Battle.net", "Battle.net.config",
 	)
-
-	if _, err := os.Stat(configPath); err == nil {
-		return nil
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("check Battle.net config: %w", err)
-	}
 
 	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
 		return fmt.Errorf("create Battle.net config directory: %w", err)
 	}
 
-	if err := os.WriteFile(configPath, []byte(battleNetConfigContent), 0o644); err != nil {
+	// Load existing config or start fresh
+	existing := make(map[string]any)
+	data, err := os.ReadFile(configPath)
+	if err == nil {
+		_ = json.Unmarshal(data, &existing)
+	}
+
+	// Merge defaults into existing (defaults don't overwrite existing keys)
+	merged := deepMerge(existing, defaultBattleNetConfig)
+
+	out, err := json.MarshalIndent(merged, "", "    ")
+	if err != nil {
+		return fmt.Errorf("marshal Battle.net config: %w", err)
+	}
+
+	if err := os.WriteFile(configPath, out, 0o644); err != nil {
 		return fmt.Errorf("write Battle.net config: %w", err)
 	}
 
 	return nil
+}
+
+// deepMerge merges src into dst. Values in dst are preserved; missing keys
+// are filled from src. Nested maps are merged recursively.
+func deepMerge(dst, src map[string]any) map[string]any {
+	result := make(map[string]any)
+	for k, v := range dst {
+		result[k] = v
+	}
+	for k, v := range src {
+		if existing, ok := result[k]; ok {
+			// Both are maps — recurse
+			if existMap, ok1 := existing.(map[string]any); ok1 {
+				if srcMap, ok2 := v.(map[string]any); ok2 {
+					result[k] = deepMerge(existMap, srcMap)
+					continue
+				}
+			}
+			// dst already has this key — keep it
+			continue
+		}
+		result[k] = v
+	}
+	return result
 }
