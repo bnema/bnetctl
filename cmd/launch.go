@@ -32,7 +32,7 @@ func runLaunch(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	runtime := wine.NewAdapter(getLogger())
+	runtime := wine.NewAdapter(log)
 	fs := xdg.NewFilesystem()
 
 	// Display Wine version before launch (display-only; service re-detects internally)
@@ -41,7 +41,7 @@ func runLaunch(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Println(styles.StepPrefix.Render("Launching Battle.net..."))
 
-	launcher := services.NewLaunchService(runtime, fs, cfg, env.BuildGPUEnv, getLogger())
+	launcher := services.NewLaunchService(runtime, fs, cfg, env.BuildGPUEnv, log)
 
 	log.Info("launching battle.net")
 	if _, err := launcher.Launch(); err != nil {

@@ -53,7 +53,7 @@ func runDesktopAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	extractor := icoutils.NewExtractor(getLogger())
+	extractor := icoutils.NewExtractor(log)
 	exePath := filepath.Join(cfg.PrefixDir, "pfx", domain.BattleNetExeRelPath)
 	destPath := filepath.Join(cfg.DataDir, "battlenet.png")
 	iconPath := extractor.ExtractIcon(exePath, destPath)

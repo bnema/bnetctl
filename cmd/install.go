@@ -35,11 +35,11 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	runtime := wine.NewAdapter(getLogger())
+	runtime := wine.NewAdapter(log)
 	downloader := http.NewDownloader()
 	fs := xdg.NewFilesystem()
 
-	installer := services.NewInstallerService(runtime, downloader, fs, cfg, getLogger())
+	installer := services.NewInstallerService(runtime, downloader, fs, cfg, log)
 
 	// Check if already installed
 	inst := installer.GetInstallation()
@@ -129,7 +129,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		// Auto-create desktop entry
 		desktop := xdg.NewDesktop()
 		if !desktop.EntryExists("bnetctl") {
-			extractor := icoutils.NewExtractor(getLogger())
+			extractor := icoutils.NewExtractor(log)
 			exePath := filepath.Join(cfg.PrefixDir, "pfx", domain.BattleNetExeRelPath)
 			destPath := filepath.Join(cfg.DataDir, "battlenet.png")
 			iconPath := extractor.ExtractIcon(exePath, destPath)
