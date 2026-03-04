@@ -11,6 +11,7 @@ import (
 	"github.com/bnema/bnetctl/internal/adapters/xdg"
 	"github.com/bnema/bnetctl/internal/domain"
 	"github.com/bnema/bnetctl/internal/logger"
+	"github.com/bnema/bnetctl/internal/ports"
 	"github.com/bnema/bnetctl/internal/ui/styles"
 )
 
@@ -85,7 +86,7 @@ func runDesktopRemove(cmd *cobra.Command, args []string) error {
 }
 
 // createDesktopEntry creates the .desktop file with the given icon path.
-func createDesktopEntry(desktop *xdg.Desktop, iconPath string) error {
+func createDesktopEntry(desktop ports.DesktopPort, iconPath string) error {
 	execPath, err := os.Executable()
 	if err != nil {
 		execPath = "bnetctl"
@@ -135,7 +136,7 @@ func extractIcon(cfg *domain.Config) string {
 
 	// Extract .ico from exe
 	tmpIco := filepath.Join(os.TempDir(), "bnetctl-icon.ico")
-	defer os.Remove(tmpIco)
+	defer func() { _ = os.Remove(tmpIco) }()
 
 	// wrestool -x -t 14 -o /tmp/bnetctl-icon.ico "Battle.net.exe"
 	// Type 14 = RT_GROUP_ICON
@@ -151,7 +152,7 @@ func extractIcon(cfg *domain.Config) string {
 	if err != nil {
 		return "applications-games"
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	icotoolCmd := exec.Command(icotool, "-x", "-o", tmpDir, tmpIco)
 	if err := icotoolCmd.Run(); err != nil {
