@@ -65,6 +65,15 @@ func (f *Filesystem) WriteFile(path string, data []byte, perm os.FileMode) error
 	return os.WriteFile(path, data, perm)
 }
 
+// LogFilePath returns the default log file path under XDG_CACHE_HOME.
+func LogFilePath() (string, error) {
+	cfg, err := DefaultConfig()
+	if err != nil {
+		return "", err
+	}
+	return cfg.LogFile, nil
+}
+
 // DefaultConfig returns a Config with XDG-compliant default paths
 func DefaultConfig() (*domain.Config, error) {
 	home, err := os.UserHomeDir()

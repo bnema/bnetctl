@@ -39,13 +39,13 @@ func Execute() {
 
 func init() {
 	rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
-		cfg, err := xdg.DefaultConfig()
+		logFile, err := xdg.LogFilePath()
 		if err != nil {
 			// Fall back to stderr-only logging
 			_ = logger.Init(verbose)
 			return
 		}
-		if err := logger.InitWithFile(cfg.LogFile, verbose); err != nil {
+		if err := logger.InitWithFile(logFile, verbose); err != nil {
 			// Fall back to stderr-only logging
 			_ = logger.Init(verbose)
 		}
