@@ -291,24 +291,25 @@ func (a *Adapter) GracefulKillPrefix(prefixPath string, timeout time.Duration) e
 		}
 	}
 
-	a.killOrphanedProcesses(prefixPath)
+	_, _ = a.KillOrphans(prefixPath)
 	log.Debug("orphan cleanup complete")
 	return nil
 }
 
-// killOrphanedProcesses finds and kills any processes whose environment
-// contains WINEPREFIX matching our prefix.
-func (a *Adapter) killOrphanedProcesses(prefixPath string) {
+// KillOrphans finds and kills any processes whose environment contains WINEPREFIX
+// matching our prefix. Returns the PIDs of killed processes.
+func (a *Adapter) KillOrphans(prefixPath string) ([]int, error) {
 	log := logger.Log
 
 	entries, err := os.ReadDir("/proc")
 	if err != nil {
-		return
+		return nil, fmt.Errorf("read /proc: %w", err)
 	}
 
 	pfxDir := filepath.Join(prefixPath, "pfx")
 	marker := "WINEPREFIX=" + pfxDir
 	myPid := os.Getpid()
+	var killed []int
 
 	for _, entry := range entries {
 		if !entry.IsDir() {
@@ -337,10 +338,14 @@ func (a *Adapter) killOrphanedProcesses(prefixPath string) {
 			proc, err := os.FindProcess(pidNum)
 			if err == nil {
 				log.Debug("killing orphaned process", "pid", pidNum)
-				_ = proc.Signal(syscall.SIGKILL)
+				if sigErr := proc.Signal(syscall.SIGKILL); sigErr == nil {
+					killed = append(killed, pidNum)
+				}
 			}
 		}
 	}
+
+	return killed, nil
 }
 
 // buildEnv builds the environment for Wine commands.

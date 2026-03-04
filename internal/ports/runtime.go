@@ -34,4 +34,8 @@ type RuntimePort interface {
 	// GracefulKillPrefix attempts a graceful stop (SIGTERM), waits up to timeout,
 	// then force kills (SIGKILL) any remaining processes in the prefix.
 	GracefulKillPrefix(prefixPath string, timeout time.Duration) error
+
+	// KillOrphans scans for and kills any processes belonging to the given prefix
+	// that survived wineserver shutdown. Returns the PIDs of killed processes.
+	KillOrphans(prefixPath string) ([]int, error)
 }

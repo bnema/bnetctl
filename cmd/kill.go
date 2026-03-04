@@ -2,10 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
-	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -57,64 +53,19 @@ func runKill(cmd *cobra.Command, args []string) error {
 
 	// Step 2: --all mode — scan /proc and kill anything belonging to our prefix
 	fmt.Println("Scanning for orphaned processes...")
-	killed := killPrefixProcesses(cfg.PrefixDir)
-	log.Info("orphan scan complete", "killed", killed)
-	if killed > 0 {
-		fmt.Printf(styles.Success.Render("Killed %d orphaned process(es).")+"\n", killed)
+	killed, err := runtime.KillOrphans(cfg.PrefixDir)
+	if err != nil {
+		log.Warn("orphan scan failed", "error", err)
+	}
+	log.Info("orphan scan complete", "killed", len(killed))
+	if len(killed) > 0 {
+		for _, pid := range killed {
+			fmt.Printf("  killed PID %d\n", pid)
+		}
+		fmt.Printf(styles.Success.Render("Killed %d orphaned process(es).")+"\n", len(killed))
 	} else {
 		fmt.Println(styles.Success.Render("No orphaned processes found."))
 	}
 
 	return nil
-}
-
-// killPrefixProcesses kills all processes whose environment contains our prefix path.
-// Returns the number of processes killed.
-func killPrefixProcesses(prefixPath string) int {
-	entries, err := os.ReadDir("/proc")
-	if err != nil {
-		return 0
-	}
-
-	marker := "WINEPREFIX=" + filepath.Join(prefixPath, "pfx")
-	myPid := os.Getpid()
-	killed := 0
-
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		pid := entry.Name()
-		if pid[0] < '1' || pid[0] > '9' {
-			continue
-		}
-
-		pidNum := 0
-		for _, c := range pid {
-			pidNum = pidNum*10 + int(c-'0')
-		}
-		if pidNum == myPid {
-			continue
-		}
-
-		environPath := filepath.Join("/proc", pid, "environ")
-		data, err := os.ReadFile(environPath)
-		if err != nil {
-			continue
-		}
-
-		if strings.Contains(string(data), marker) {
-			cmdline, _ := os.ReadFile(filepath.Join("/proc", pid, "cmdline"))
-			cmdStr := strings.ReplaceAll(string(cmdline), "\x00", " ")
-			proc, err := os.FindProcess(pidNum)
-			if err == nil {
-				if err := proc.Signal(syscall.SIGKILL); err == nil {
-					fmt.Printf("  killed PID %d: %s\n", pidNum, strings.TrimSpace(cmdStr))
-					killed++
-				}
-			}
-		}
-	}
-
-	return killed
 }
