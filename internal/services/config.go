@@ -13,11 +13,7 @@ import (
 // cert validation fails under Wine — these cached values provide the fallback
 // login URL that lets the auth flow recover.
 var defaultBattleNetConfig = map[string]any{
-	"Client": map[string]any{
-		"HardwareAcceleration":     "false",
-		"GameLaunchWindowBehavior": "2",
-		"Streaming":                "false",
-	},
+	"Client": map[string]any{},
 	"5a61123b37cafce1": map[string]any{
 		"Client": map[string]any{
 			"Language": "enUS",
