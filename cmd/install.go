@@ -7,11 +7,13 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/bnema/bnetctl/internal/adapters/env"
 	"github.com/bnema/bnetctl/internal/adapters/http"
 	"github.com/bnema/bnetctl/internal/adapters/icoutils"
 	"github.com/bnema/bnetctl/internal/adapters/wine"
 	"github.com/bnema/bnetctl/internal/adapters/xdg"
 	"github.com/bnema/bnetctl/internal/domain"
+	"github.com/bnema/bnetctl/internal/ports"
 	"github.com/bnema/bnetctl/internal/services"
 	"github.com/bnema/bnetctl/internal/ui/styles"
 )
@@ -39,7 +41,9 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	downloader := http.NewDownloader()
 	fs := xdg.NewFilesystem()
 
-	installer := services.NewInstallerService(runtime, downloader, fs, cfg, log)
+	installer := services.NewInstallerService(runtime, downloader, fs, cfg, func() *domain.WineEnv {
+		return env.BuildGPUEnvForDisplay(env.DisplayDriverWayland)
+	}, log)
 
 	// Check if already installed
 	inst := installer.GetInstallation()
@@ -126,18 +130,18 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		fmt.Println(styles.Success.Render("Battle.net installed successfully!"))
 		fmt.Println(styles.Muted.Render("  Prefix: " + result.PrefixPath))
 
-		// Auto-create desktop entry
+		// Auto-create desktop entries (Wayland + X11)
 		desktop := xdg.NewDesktop()
-		if !desktop.EntryExists("bnetctl") {
+		if !desktop.EntryExists(ports.EntryWayland) || !desktop.EntryExists(ports.EntryX11) {
 			extractor := icoutils.NewExtractor(log)
 			exePath := filepath.Join(cfg.PrefixDir, "pfx", domain.BattleNetExeRelPath)
 			destPath := filepath.Join(cfg.DataDir, "battlenet.png")
 			iconPath := extractor.ExtractIcon(exePath, destPath)
-			if err := createDesktopEntry(desktop, iconPath); err != nil {
-				log.Warn("failed to create desktop entry", "error", err)
+			if err := createDesktopEntries(desktop, iconPath); err != nil {
+				log.Warn("failed to create desktop entries", "error", err)
 			} else {
-				log.Info("desktop entry auto-created", "icon", iconPath)
-				fmt.Println(styles.Muted.Render("  Desktop entry created"))
+				log.Info("desktop entries auto-created", "icon", iconPath)
+				fmt.Println(styles.Muted.Render("  Desktop entries created"))
 			}
 		}
 

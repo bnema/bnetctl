@@ -18,6 +18,13 @@ const (
 	GPUVendorUnknown GPUVendor = "unknown"
 )
 
+type DisplayDriver string
+
+const (
+	DisplayDriverWayland DisplayDriver = "wayland"
+	DisplayDriverX11     DisplayDriver = "x11"
+)
+
 // DetectGPU reads /sys/class/drm to determine the GPU vendor
 func DetectGPU() GPUVendor {
 	drmPath := "/sys/class/drm"
@@ -52,9 +59,13 @@ func IsWayland() bool {
 	return os.Getenv("WAYLAND_DISPLAY") != ""
 }
 
-// BuildGPUEnv returns environment variables optimized for the detected GPU
-// and the current desktop session (focused on Wayland tiling WMs like niri, hyprland).
+// BuildGPUEnv returns environment variables optimized for the detected GPU.
+// Native Wayland is the default display driver.
 func BuildGPUEnv() *domain.WineEnv {
+	return BuildGPUEnvForDisplay(DisplayDriverWayland)
+}
+
+func BuildGPUEnvForDisplay(driver DisplayDriver) *domain.WineEnv {
 	env := &domain.WineEnv{
 		Vars: make(map[string]string),
 	}
@@ -73,10 +84,10 @@ func BuildGPUEnv() *domain.WineEnv {
 		}
 	}
 
-	// Wine should use XWayland (via DISPLAY) for Battle.net/CEF apps.
-	// Wine's native Wayland driver has issues with CEF-based apps like Battle.net.
-	// On tiling WMs (niri, hyprland, sway), xwayland-satellite provides DISPLAY.
-	// We do NOT unset DISPLAY or force Wayland — XWayland is more stable for gaming.
+	if driver == DisplayDriverWayland {
+		// Without an X11 display, Wine selects its native Wayland driver.
+		env.Unset = append(env.Unset, "DISPLAY")
+	}
 
 	// NTSync: wine-cachyos detects /dev/ntsync automatically. No env var needed.
 

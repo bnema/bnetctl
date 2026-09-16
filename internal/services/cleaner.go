@@ -82,8 +82,10 @@ func (s *CleanerService) CleanAll() error {
 		return err
 	}
 
-	// Remove desktop entry
-	_ = s.desktop.RemoveEntry("bnetctl")
+	// Remove desktop entries (Wayland + X11 plus legacy single entry)
+	for _, name := range []string{ports.EntryWayland, ports.EntryX11, ports.EntryLegacy} {
+		_ = s.desktop.RemoveEntry(name)
+	}
 
 	// Remove data dir
 	if s.fs.Exists(s.cfg.DataDir) {
