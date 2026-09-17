@@ -14,6 +14,10 @@ type RuntimePort interface {
 	// CreatePrefix initializes a new Wine prefix at the given path
 	CreatePrefix(prefixPath string) error
 
+	// DisableSystray disables Wine's standalone systray window for the prefix.
+	// It must be applied before an application registers a tray icon.
+	DisableSystray(prefixPath string) error
+
 	// RunExe runs a Windows executable inside the prefix (blocking)
 	// exePath is the path to the .exe file
 	RunExe(prefixPath string, exePath string, env *domain.WineEnv) error
