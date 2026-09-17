@@ -10,7 +10,12 @@ func TestBattleNetArgsForDisplay(t *testing.T) {
 		driver DisplayDriver
 		want   []string
 	}{
-		{driver: DisplayDriverWayland, want: []string{BattleNetInProcessGPUArg}},
+		{driver: DisplayDriverWayland, want: []string{
+			"--in-process-gpu",
+			"--disable-backgrounding-occluded-windows",
+			"--disable-renderer-backgrounding",
+			"--disable-background-timer-throttling",
+		}},
 		{driver: DisplayDriverX11},
 	}
 
