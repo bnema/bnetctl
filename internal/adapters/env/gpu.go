@@ -23,6 +23,8 @@ type DisplayDriver string
 const (
 	DisplayDriverWayland DisplayDriver = "wayland"
 	DisplayDriverX11     DisplayDriver = "x11"
+
+	BattleNetInProcessGPUArg = "--in-process-gpu"
 )
 
 // DetectGPU reads /sys/class/drm to determine the GPU vendor
@@ -65,6 +67,17 @@ func BuildGPUEnv() *domain.WineEnv {
 	return BuildGPUEnvForDisplay(DisplayDriverWayland)
 }
 
+// BattleNetArgsForDisplay returns launcher-only compatibility arguments.
+// Wine Wayland cannot render CEF's cross-process Vulkan surface, so keep GPU
+// rendering in Battle.net's window-owning process. The argument is not inherited
+// through the environment, leaving games free to use their normal GPU setup.
+func BattleNetArgsForDisplay(driver DisplayDriver) []string {
+	if driver == DisplayDriverWayland {
+		return []string{BattleNetInProcessGPUArg}
+	}
+	return nil
+}
+
 func BuildGPUEnvForDisplay(driver DisplayDriver) *domain.WineEnv {
 	env := &domain.WineEnv{
 		Vars: make(map[string]string),
@@ -88,6 +101,13 @@ func BuildGPUEnvForDisplay(driver DisplayDriver) *domain.WineEnv {
 		// Without an X11 display, Wine selects its native Wayland driver.
 		env.Unset = append(env.Unset, "DISPLAY")
 	}
+
+	// NOTE: do NOT set DISABLE_LSFGVK here. lsfg-vk is a GLOBAL Vulkan
+	// layer that stays idle unless the exe matches a profile's active_in
+	// list, so Battle.net.exe is unaffected once the user config is valid
+	// v2 (see lsfg-vk.dev). Games started from Battle.net inherit this
+	// environment, so force-disabling would also kill frame generation
+	// for games. Keep user Vulkan layers untouched.
 
 	// NTSync: wine-cachyos detects /dev/ntsync automatically. No env var needed.
 

@@ -20,6 +20,7 @@ type LaunchService struct {
 	fs      ports.FilesystemPort
 	cfg     *domain.Config
 	envFn   func() *domain.WineEnv
+	exeArgs []string
 	log     *log.Logger
 }
 
@@ -36,12 +37,14 @@ func NewLaunchService(
 	cfg *domain.Config,
 	envFn func() *domain.WineEnv,
 	log *log.Logger,
+	exeArgs ...string,
 ) *LaunchService {
 	return &LaunchService{
 		runtime: runtime,
 		fs:      fs,
 		cfg:     cfg,
 		envFn:   envFn,
+		exeArgs: exeArgs,
 		log:     log,
 	}
 }
@@ -85,7 +88,7 @@ func (s *LaunchService) Launch() (*LaunchResult, error) {
 
 	// Launch wine async so we get access to the process for cleanup
 	log.Info("launching battle.net async", "exe", inst.ExePath)
-	done, err := s.runtime.RunExeAsync(s.cfg.PrefixDir, inst.ExePath, env)
+	done, err := s.runtime.RunExeAsync(s.cfg.PrefixDir, inst.ExePath, env, s.exeArgs...)
 	if err != nil {
 		log.Error("launch battle.net failed", "error", err)
 		return nil, fmt.Errorf("launch Battle.net: %w", err)

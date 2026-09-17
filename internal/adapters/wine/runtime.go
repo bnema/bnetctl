@@ -182,7 +182,7 @@ func (a *Adapter) RunExe(prefixPath string, exePath string, wineEnv *domain.Wine
 }
 
 // RunExeAsync runs a Windows executable inside the prefix without blocking
-func (a *Adapter) RunExeAsync(prefixPath string, exePath string, wineEnv *domain.WineEnv) (<-chan error, error) {
+func (a *Adapter) RunExeAsync(prefixPath string, exePath string, wineEnv *domain.WineEnv, args ...string) (<-chan error, error) {
 	log := a.log
 
 	rt, err := a.Detect()
@@ -191,10 +191,11 @@ func (a *Adapter) RunExeAsync(prefixPath string, exePath string, wineEnv *domain
 	}
 
 	pfxDir := filepath.Join(prefixPath, "pfx")
-	log.Debug("starting exe async", "wine", rt.WineBin, "exe", exePath, "prefix", pfxDir)
+	log.Debug("starting exe async", "wine", rt.WineBin, "exe", exePath, "args", args, "prefix", pfxDir)
 	env := a.buildEnv(pfxDir, wineEnv)
 
-	cmd := exec.Command(rt.WineBin, exePath)
+	cmdArgs := append([]string{exePath}, args...)
+	cmd := exec.Command(rt.WineBin, cmdArgs...)
 	cmd.Env = envMapToSlice(env)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
