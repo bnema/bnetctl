@@ -263,12 +263,52 @@ func (a *Adapter) WaitPrefix(prefixPath string) error {
 	return cmd.Run()
 }
 
+// battleNetProcessName is the executable that taskkill targets.
+const battleNetProcessName = "Battle.net.exe"
+
+// battleNetCloseWait is how long Battle.net is given to persist its session after
+// it has been asked to close. A variable so tests can shorten it.
+var battleNetCloseWait = 5 * time.Second
+
+// closeBattleNetWindows asks Battle.net to close its own windows (WM_CLOSE)
+// instead of killing it outright, so it can persist its session before the prefix
+// is torn down. A killed launcher loses the session, and the next start then
+// needs the interactive login popup, which does not complete under the native
+// Wayland driver.
+func (a *Adapter) closeBattleNetWindows(prefixPath string) {
+	rt, err := a.Detect()
+	if err != nil {
+		a.log.Debug("cannot close Battle.net windows", "error", err)
+		return
+	}
+
+	pfxDir := filepath.Join(prefixPath, "pfx")
+	env := a.buildEnv(pfxDir, nil)
+	env["WINEDEBUG"] = "-all"
+
+	cmd := exec.Command(rt.WineBin, "taskkill", "/IM", battleNetProcessName)
+	cmd.Env = envMapToSlice(env)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		a.log.Debug("close Battle.net windows failed", "error", err, "output", strings.TrimSpace(string(out)))
+		return
+	}
+	a.log.Debug("asked Battle.net to close", "output", strings.TrimSpace(string(out)))
+}
+
 // GracefulKillPrefix attempts a graceful stop, waits up to timeout, then force kills.
 // Also cleans up orphaned processes that survive wineserver shutdown.
 func (a *Adapter) GracefulKillPrefix(prefixPath string, timeout time.Duration) error {
 	log := a.log
 	pfxDir := filepath.Join(prefixPath, "pfx")
 	log.Debug("graceful kill initiated", "prefix", pfxDir, "timeout", timeout)
+
+	// Let Battle.net save its session before the prefix is taken down.
+	if a.IsProcessRunning(prefixPath) {
+		a.closeBattleNetWindows(prefixPath)
+		log.Debug("waiting for Battle.net to close", "wait", battleNetCloseWait)
+		time.Sleep(battleNetCloseWait)
+	}
 
 	if err := a.KillPrefix(prefixPath); err != nil {
 		return fmt.Errorf("stop wineserver: %w", err)
