@@ -86,6 +86,15 @@ func (s *LaunchService) Launch() (*LaunchResult, error) {
 		return nil, fmt.Errorf("ensure Battle.net config: %w", err)
 	}
 
+	// Wine's standalone systray window becomes a full-size empty column on
+	// tiling Wayland compositors. Prefixes created before this setting existed
+	// never received it, so apply it on every launch, before Battle.net
+	// registers its tray icon.
+	log.Debug("disabling wine systray")
+	if err := s.runtime.DisableSystray(s.cfg.PrefixDir); err != nil {
+		log.Warn("failed to disable wine systray (non-fatal)", "error", err)
+	}
+
 	// Launch wine async so we get access to the process for cleanup
 	log.Info("launching battle.net async", "exe", inst.ExePath)
 	done, err := s.runtime.RunExeAsync(s.cfg.PrefixDir, inst.ExePath, env, s.exeArgs...)

@@ -142,15 +142,10 @@ func (a *Adapter) CreatePrefix(prefixPath string) error {
 		}
 	}
 
-	// Disable Wine systray icon (floats as orphan window on Wayland tiling WMs)
+	// Disable Wine's systray window (tiled as a full-size empty column on
+	// Wayland compositors) before the prefix is used.
 	log.Debug("disabling wine systray")
-	regCmd := exec.Command(rt.WineBin, "reg", "add",
-		`HKCU\Software\Wine\Explorer`, "/v", "ShowSystray",
-		"/t", "REG_DWORD", "/d", "0", "/f")
-	regCmd.Env = envMapToSlice(env)
-	regCmd.Stdout = os.Stdout
-	regCmd.Stderr = os.Stderr
-	if err := regCmd.Run(); err != nil {
+	if err := a.DisableSystray(prefixPath); err != nil {
 		log.Warn("failed to disable systray (non-fatal)", "error", err)
 	}
 	// Wait for wineserver after reg edit
@@ -158,6 +153,33 @@ func (a *Adapter) CreatePrefix(prefixPath string) error {
 	waitRegCmd.Env = envMapToSlice(env)
 	_ = waitRegCmd.Run()
 
+	return nil
+}
+
+// DisableSystray turns off Wine's standalone systray window for a prefix.
+//
+// Wine shows that window as soon as an application registers a tray icon
+// (programs/explorer/desktop.c reads HKCU\Software\Wine\Explorer\ShowSystray as
+// REG_DWORD). On tiling compositors it is tiled as a full-size empty column, so
+// it must be disabled before the application starts - not only when the prefix
+// is first created.
+func (a *Adapter) DisableSystray(prefixPath string) error {
+	rt, err := a.Detect()
+	if err != nil {
+		return err
+	}
+
+	pfxDir := filepath.Join(prefixPath, "pfx")
+	env := a.buildEnv(pfxDir, nil)
+	env["WINEDEBUG"] = "-all"
+
+	cmd := exec.Command(rt.WineBin, "reg", "add",
+		`HKCU\Software\Wine\Explorer`, "/v", "ShowSystray",
+		"/t", "REG_DWORD", "/d", "0", "/f")
+	cmd.Env = envMapToSlice(env)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("disable wine systray: %w (%s)", err, strings.TrimSpace(string(out)))
+	}
 	return nil
 }
 
