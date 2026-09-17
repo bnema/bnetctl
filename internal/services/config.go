@@ -12,7 +12,9 @@ import (
 )
 
 // defaultBattleNetConfig is the baseline config for Battle.net under Wine.
-// Do NOT set HardwareAcceleration: false — it breaks CEF rendering under Wine.
+// Do not persist HardwareAcceleration:false here: the native Wayland launcher
+// keeps CEF GPU rendering enabled but in-process, avoiding the unsupported
+// cross-process surface without producing a blank software-rendered UI.
 // LastLoginTassadar/LastLoginAddress are required because Battle.net's backend
 // cert validation fails under Wine — these cached values provide the fallback
 // login URL that lets the auth flow recover.

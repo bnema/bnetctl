@@ -58,7 +58,7 @@ func runLaunch(cmd *cobra.Command, args []string) error {
 
 	launcher := services.NewLaunchService(runtime, fs, cfg, func() *domain.WineEnv {
 		return env.BuildGPUEnvForDisplay(driver)
-	}, log)
+	}, log, env.BattleNetArgsForDisplay(driver)...)
 
 	log.Info("launching battle.net")
 	if _, err := launcher.Launch(); err != nil {

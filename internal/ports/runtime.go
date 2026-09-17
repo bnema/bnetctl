@@ -20,7 +20,7 @@ type RuntimePort interface {
 
 	// RunExeAsync runs a Windows executable inside the prefix without blocking.
 	// Returns a channel that receives the exit error when the process completes.
-	RunExeAsync(prefixPath string, exePath string, env *domain.WineEnv) (<-chan error, error)
+	RunExeAsync(prefixPath string, exePath string, env *domain.WineEnv, args ...string) (<-chan error, error)
 
 	// IsProcessRunning checks if a Wine process is running in the given prefix
 	IsProcessRunning(prefixPath string) bool
