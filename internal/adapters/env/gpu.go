@@ -67,14 +67,23 @@ func BuildGPUEnv() *domain.WineEnv {
 	return BuildGPUEnvForDisplay(DisplayDriverWayland)
 }
 
-// BattleNetArgsForDisplay returns the compatibility arguments applied to the
-// Battle.net launcher and its setup executable. Wine Wayland cannot render CEF's
-// cross-process Vulkan surface, so keep GPU rendering in Battle.net's
-// window-owning process. The argument is never inherited through the environment,
-// leaving games free to use their normal GPU setup.
+// BattleNetArgsForDisplay returns compatibility arguments applied to the
+// Battle.net launcher and its setup executable.
+//
+// Wine Wayland cannot render CEF's cross-process Vulkan surface, so GPU work
+// stays in Battle.net's own process. The remaining switches stop Chromium from
+// treating CEF windows as backgrounded: the login popup loads its page but never
+// returns a token when its renderer is throttled, which leaves the launcher on a
+// spinner. The arguments are never inherited through the environment, leaving
+// games free to use their normal GPU setup.
 func BattleNetArgsForDisplay(driver DisplayDriver) []string {
 	if driver == DisplayDriverWayland {
-		return []string{BattleNetInProcessGPUArg}
+		return []string{
+			BattleNetInProcessGPUArg,
+			"--disable-backgrounding-occluded-windows",
+			"--disable-renderer-backgrounding",
+			"--disable-background-timer-throttling",
+		}
 	}
 	return nil
 }
