@@ -41,6 +41,7 @@ type InstallerService struct {
 	fs         ports.FilesystemPort
 	cfg        *domain.Config
 	envFn      func() *domain.WineEnv
+	exeArgs    []string
 	log        *log.Logger
 }
 
@@ -52,6 +53,7 @@ func NewInstallerService(
 	cfg *domain.Config,
 	envFn func() *domain.WineEnv,
 	log *log.Logger,
+	exeArgs ...string,
 ) *InstallerService {
 	return &InstallerService{
 		runtime:    runtime,
@@ -59,6 +61,7 @@ func NewInstallerService(
 		fs:         fs,
 		cfg:        cfg,
 		envFn:      envFn,
+		exeArgs:    exeArgs,
 		log:        log,
 	}
 }
@@ -130,13 +133,13 @@ func (s *InstallerService) Install(progressFn func(InstallProgress)) (*domain.In
 	}
 
 	// Step 5: Launch installer asynchronously
-	log.Debug("launching installer async", "setup", setupPath)
+	log.Debug("launching installer async", "setup", setupPath, "args", s.exeArgs)
 	report(InstallRunningSetup, "Running Battle.net installer...")
 	var wineEnv *domain.WineEnv
 	if s.envFn != nil {
 		wineEnv = s.envFn()
 	}
-	done, err := s.runtime.RunExeAsync(s.cfg.PrefixDir, setupPath, wineEnv)
+	done, err := s.runtime.RunExeAsync(s.cfg.PrefixDir, setupPath, wineEnv, s.exeArgs...)
 	if err != nil {
 		log.Error("start installer failed", "error", err)
 		return nil, fmt.Errorf("start Battle.net installer: %w", err)
@@ -178,22 +181,17 @@ func (s *InstallerService) Install(progressFn func(InstallProgress)) (*domain.In
 	return s.buildResult(exePath, setupPath), nil
 }
 
-// GetInstallation returns the current installation state
-func (s *InstallerService) GetInstallation() *domain.Installation {
-	exePath := filepath.Join(s.cfg.PrefixDir, "pfx", domain.BattleNetExeRelPath)
-	return &domain.Installation{
-		PrefixPath: s.cfg.PrefixDir,
-		ExePath:    exePath,
-		SetupPath:  filepath.Join(s.cfg.CacheDir, "Battle.net-Setup.exe"),
-		Installed:  s.fs.Exists(exePath),
-	}
+// IsInstalled reports whether the Battle.net client exists in the prefix
+func IsInstalled(fs ports.FilesystemPort, cfg *domain.Config) bool {
+	return fs.Exists(filepath.Join(cfg.PrefixDir, "pfx", domain.BattleNetExeRelPath))
 }
 
+// buildResult reports the installation state left behind by a completed setup run
 func (s *InstallerService) buildResult(exePath, setupPath string) *domain.Installation {
 	return &domain.Installation{
 		PrefixPath: s.cfg.PrefixDir,
 		ExePath:    exePath,
 		SetupPath:  setupPath,
-		Installed:  s.fs.Exists(exePath),
+		Installed:  IsInstalled(s.fs, s.cfg),
 	}
 }
