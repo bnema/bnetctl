@@ -15,6 +15,11 @@ import (
 	"github.com/bnema/bnetctl/internal/ports"
 )
 
+const (
+	wineOverrideEnv   = "BNETCTL_WINE"
+	cachyOSWineBinary = "/opt/wine-cachyos/bin/wine"
+)
+
 // Adapter implements ports.RuntimePort using wine-cachyos directly
 type Adapter struct {
 	log *log.Logger
@@ -31,19 +36,9 @@ func NewAdapter(log *log.Logger) *Adapter {
 func (a *Adapter) Detect() (*domain.WineRuntime, error) {
 	log := a.log
 
-	wineBin, err := exec.LookPath("wine")
+	wineBin, wineBootBin, wineServerBin, err := resolveBinaries()
 	if err != nil {
-		return nil, fmt.Errorf("wine not found: %w (install wine-cachyos: paru -S wine-cachyos)", err)
-	}
-
-	wineBootBin, err := exec.LookPath("wineboot")
-	if err != nil {
-		return nil, fmt.Errorf("wineboot not found: %w", err)
-	}
-
-	wineServerBin, err := exec.LookPath("wineserver")
-	if err != nil {
-		return nil, fmt.Errorf("wineserver not found: %w", err)
+		return nil, err
 	}
 	log.Debug("detecting wine", "wine", wineBin, "wineboot", wineBootBin, "wineserver", wineServerBin)
 
@@ -220,7 +215,7 @@ func (a *Adapter) RunExeAsync(prefixPath string, exePath string, wineEnv *domain
 func (a *Adapter) IsProcessRunning(prefixPath string) bool {
 	log := a.log
 
-	wineServerBin, err := exec.LookPath("wineserver")
+	_, _, wineServerBin, err := resolveBinaries()
 	if err != nil {
 		return false
 	}
@@ -238,9 +233,9 @@ func (a *Adapter) IsProcessRunning(prefixPath string) bool {
 func (a *Adapter) KillPrefix(prefixPath string) error {
 	log := a.log
 
-	wineServerBin, err := exec.LookPath("wineserver")
+	_, _, wineServerBin, err := resolveBinaries()
 	if err != nil {
-		return fmt.Errorf("wineserver not found: %w", err)
+		return err
 	}
 
 	pfxDir := filepath.Join(prefixPath, "pfx")
@@ -254,9 +249,9 @@ func (a *Adapter) KillPrefix(prefixPath string) error {
 
 // WaitPrefix blocks until the wineserver for the given prefix exits
 func (a *Adapter) WaitPrefix(prefixPath string) error {
-	wineServerBin, err := exec.LookPath("wineserver")
+	_, _, wineServerBin, err := resolveBinaries()
 	if err != nil {
-		return fmt.Errorf("wineserver not found: %w", err)
+		return err
 	}
 
 	pfxDir := filepath.Join(prefixPath, "pfx")
@@ -274,7 +269,9 @@ func (a *Adapter) GracefulKillPrefix(prefixPath string, timeout time.Duration) e
 	pfxDir := filepath.Join(prefixPath, "pfx")
 	log.Debug("graceful kill initiated", "prefix", pfxDir, "timeout", timeout)
 
-	_ = a.KillPrefix(prefixPath)
+	if err := a.KillPrefix(prefixPath); err != nil {
+		return fmt.Errorf("stop wineserver: %w", err)
+	}
 
 	done := make(chan error, 1)
 	go func() {
@@ -282,15 +279,21 @@ func (a *Adapter) GracefulKillPrefix(prefixPath string, timeout time.Duration) e
 	}()
 
 	select {
-	case <-done:
+	case err := <-done:
+		if err != nil {
+			return fmt.Errorf("wait for wineserver: %w", err)
+		}
 	case <-time.After(timeout):
 		log.Warn("graceful kill timed out, force killing")
-		wineServerBin, _ := exec.LookPath("wineserver")
-		if wineServerBin != "" {
-			env := a.buildEnv(pfxDir, nil)
-			cmd := exec.Command(wineServerBin, "-k9")
-			cmd.Env = envMapToSlice(env)
-			_ = cmd.Run()
+		_, _, wineServerBin, err := resolveBinaries()
+		if err != nil {
+			return err
+		}
+		env := a.buildEnv(pfxDir, nil)
+		cmd := exec.Command(wineServerBin, "-k9")
+		cmd.Env = envMapToSlice(env)
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("force stop wineserver: %w", err)
 		}
 	}
 
@@ -364,12 +367,52 @@ func (a *Adapter) buildEnv(pfxDir string, wineEnv *domain.WineEnv) map[string]st
 	env["WINEPREFIX"] = pfxDir
 
 	if wineEnv != nil {
+		for _, key := range wineEnv.Unset {
+			delete(env, key)
+		}
 		for k, v := range wineEnv.Vars {
 			env[k] = v
 		}
 	}
 
 	return env
+}
+
+func resolveBinaries() (wine, wineboot, wineserver string, err error) {
+	wine = os.Getenv(wineOverrideEnv)
+	if wine == "" {
+		if isExecutable(cachyOSWineBinary) {
+			wine = cachyOSWineBinary
+		} else if wine, err = exec.LookPath("wine"); err != nil {
+			return "", "", "", fmt.Errorf("wine not found: %w (install wine-cachyos-opt or set %s)", err, wineOverrideEnv)
+		}
+	} else if !filepath.IsAbs(wine) {
+		if wine, err = exec.LookPath(wine); err != nil {
+			return "", "", "", fmt.Errorf("resolve %s: %w", wineOverrideEnv, err)
+		}
+	}
+	if !isExecutable(wine) {
+		return "", "", "", fmt.Errorf("wine executable is not usable: %s", wine)
+	}
+	if resolved, resolveErr := filepath.EvalSymlinks(wine); resolveErr == nil {
+		wine = resolved
+	}
+
+	binDir := filepath.Dir(wine)
+	wineboot = filepath.Join(binDir, "wineboot")
+	wineserver = filepath.Join(binDir, "wineserver")
+	if !isExecutable(wineboot) {
+		return "", "", "", fmt.Errorf("wineboot not found next to wine: %s", wineboot)
+	}
+	if !isExecutable(wineserver) {
+		return "", "", "", fmt.Errorf("wineserver not found next to wine: %s", wineserver)
+	}
+	return wine, wineboot, wineserver, nil
+}
+
+func isExecutable(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir() && info.Mode().Perm()&0o111 != 0
 }
 
 func envMapToSlice(env map[string]string) []string {

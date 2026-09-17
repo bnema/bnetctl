@@ -40,6 +40,7 @@ type InstallerService struct {
 	downloader ports.DownloaderPort
 	fs         ports.FilesystemPort
 	cfg        *domain.Config
+	envFn      func() *domain.WineEnv
 	log        *log.Logger
 }
 
@@ -49,6 +50,7 @@ func NewInstallerService(
 	downloader ports.DownloaderPort,
 	fs ports.FilesystemPort,
 	cfg *domain.Config,
+	envFn func() *domain.WineEnv,
 	log *log.Logger,
 ) *InstallerService {
 	return &InstallerService{
@@ -56,6 +58,7 @@ func NewInstallerService(
 		downloader: downloader,
 		fs:         fs,
 		cfg:        cfg,
+		envFn:      envFn,
 		log:        log,
 	}
 }
@@ -129,7 +132,11 @@ func (s *InstallerService) Install(progressFn func(InstallProgress)) (*domain.In
 	// Step 5: Launch installer asynchronously
 	log.Debug("launching installer async", "setup", setupPath)
 	report(InstallRunningSetup, "Running Battle.net installer...")
-	done, err := s.runtime.RunExeAsync(s.cfg.PrefixDir, setupPath, nil)
+	var wineEnv *domain.WineEnv
+	if s.envFn != nil {
+		wineEnv = s.envFn()
+	}
+	done, err := s.runtime.RunExeAsync(s.cfg.PrefixDir, setupPath, wineEnv)
 	if err != nil {
 		log.Error("start installer failed", "error", err)
 		return nil, fmt.Errorf("start Battle.net installer: %w", err)

@@ -29,8 +29,10 @@ type WineRuntime struct {
 
 // WineEnv holds the environment variables needed to run Wine
 type WineEnv struct {
-	// Vars is the map of environment variables to set
+	// Vars is the map of environment variables to set.
 	Vars map[string]string
+	// Unset lists inherited environment variables to remove.
+	Unset []string
 }
 
 // WineUsername returns the current Linux username (used for Wine prefix user paths).

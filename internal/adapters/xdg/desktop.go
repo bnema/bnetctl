@@ -4,9 +4,34 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/bnema/bnetctl/internal/ports"
 )
+
+// QuoteDesktopExec builds a Desktop Exec command line from an executable path
+// plus verbatim arguments, quoting the executable path per Desktop Entry
+// spec quoting (double quotes with \ and " escaped) when it contains
+// whitespace or shell/special characters. Arguments are appended verbatim
+// separated by single spaces.
+func QuoteDesktopExec(exePath string, args ...string) string {
+	quoted := quoteDesktopArg(exePath)
+	if len(args) == 0 {
+		return quoted
+	}
+	return quoted + " " + strings.Join(args, " ")
+}
+
+func quoteDesktopArg(s string) string {
+	if s == "" {
+		return `""`
+	}
+	if !strings.ContainsAny(s, " \t\n\"'\\><~|&;*?#()`$%") {
+		return s
+	}
+	r := strings.NewReplacer(`\`, `\\`, `"`, `\"`, "`", "\\`", "$", "\\$", "%", "%%")
+	return `"` + r.Replace(s) + `"`
+}
 
 // Desktop implements ports.DesktopPort using XDG desktop entries
 type Desktop struct{}
@@ -19,7 +44,7 @@ func NewDesktop() *Desktop {
 }
 
 // CreateEntry creates a .desktop file for the application
-func (d *Desktop) CreateEntry(name string, execCmd string, iconPath string) error {
+func (d *Desktop) CreateEntry(name string, displayName string, execCmd string, iconPath string) error {
 	appsDir, err := desktopAppsDir()
 	if err != nil {
 		return err
@@ -32,7 +57,7 @@ func (d *Desktop) CreateEntry(name string, execCmd string, iconPath string) erro
 	desktopFile := filepath.Join(appsDir, name+".desktop")
 
 	content := fmt.Sprintf(`[Desktop Entry]
-Name=Battle.net
+Name=%s
 Comment=Battle.net Game Launcher (via bnetctl)
 Exec=%s
 Icon=%s
@@ -40,7 +65,7 @@ Terminal=false
 Type=Application
 Categories=Game;
 StartupWMClass=battle.net.exe
-`, execCmd, iconPath)
+`, displayName, execCmd, iconPath)
 
 	if err := os.WriteFile(desktopFile, []byte(content), 0o644); err != nil {
 		return fmt.Errorf("write desktop file: %w", err)
