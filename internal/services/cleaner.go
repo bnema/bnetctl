@@ -57,7 +57,7 @@ func (s *CleanerService) CleanPrefix() error {
 	// A prefix whose wineserver is gone still holds wine processes, and removing
 	// the directory under them leaves them running against deleted files.
 	if err := s.runtime.GracefulKillPrefix(s.cfg.PrefixDir, 10*time.Second); err != nil {
-		log.Warn("stopping wine processes before removing the prefix failed", "error", err)
+		return fmt.Errorf("stop wine processes before removal: %w", err)
 	}
 
 	if s.fs.Exists(s.cfg.PrefixDir) {

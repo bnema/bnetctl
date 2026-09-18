@@ -17,9 +17,10 @@ import (
 const killTimeout = 10 * time.Second
 
 var killCmd = &cobra.Command{
-	Use:     "kill",
-	Aliases: []string{"stop"},
-	Short:   "Kill all Battle.net/Wine processes",
+	Use:          "kill",
+	Aliases:      []string{"stop"},
+	Short:        "Kill all Battle.net/Wine processes",
+	SilenceUsage: true,
 	Long: `Stop all Battle.net and Wine processes for the bnetctl prefix.
 
 Processes left behind without a wineserver (explorer.exe, services.exe,

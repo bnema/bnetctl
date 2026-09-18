@@ -232,6 +232,10 @@ func winePrefixPath(prefixPath string) string {
 func startFakeWineProcess(t *testing.T, name string, env ...string) *exec.Cmd {
 	t.Helper()
 
+	if len(name) > 15 {
+		t.Fatalf("process name %q exceeds the 15 bytes the kernel keeps in comm", name)
+	}
+
 	sleep, err := exec.LookPath("sleep")
 	if err != nil {
 		t.Skipf("sleep is unavailable: %v", err)
@@ -275,12 +279,15 @@ func waitForExit(t *testing.T, cmd *exec.Cmd) {
 func requireAlive(t *testing.T, cmd *exec.Cmd) {
 	t.Helper()
 
-	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", cmd.Process.Pid))
+	status, err := os.ReadFile(fmt.Sprintf("/proc/%d/status", cmd.Process.Pid))
 	if err != nil {
 		t.Fatalf("process %d was killed: %v", cmd.Process.Pid, err)
 	}
-	fields := strings.Fields(string(data))
-	if len(fields) < 3 || fields[2] == "Z" {
-		t.Fatalf("process %d is not running: %s", cmd.Process.Pid, string(data))
+	// The state has a line of its own, so a process name containing spaces (wine
+	// truncates "Battle.net Helper.exe" to "Battle.net Help") cannot shift it.
+	for _, line := range strings.Split(string(status), "\n") {
+		if strings.HasPrefix(line, "State:") && strings.ContainsAny(line, "Z") {
+			t.Fatalf("process %d is a zombie", cmd.Process.Pid)
+		}
 	}
 }
