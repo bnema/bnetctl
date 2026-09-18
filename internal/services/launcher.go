@@ -121,7 +121,7 @@ func (s *LaunchService) Launch() (*LaunchResult, error) {
 
 	// Best-effort cleanup: stop the wineserver and sweep anything left behind
 	fmt.Println("\nShutting down Battle.net...")
-	if err := s.runtime.GracefulKillPrefix(s.cfg.PrefixDir, 5*time.Second); err != nil {
+	if _, err := s.runtime.GracefulKillPrefix(s.cfg.PrefixDir, 5*time.Second); err != nil {
 		log.Warn("shutdown incomplete", "error", err)
 	}
 

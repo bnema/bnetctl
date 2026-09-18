@@ -352,10 +352,12 @@ func (a *Adapter) waitForBattleNetExit(prefixPath string, max time.Duration) {
 // leftovers outlive every later attempt to stop the prefix unless they are
 // reaped here - `wineserver -k` cannot reach them, because there is no server
 // left to talk to.
-func (a *Adapter) GracefulKillPrefix(prefixPath string, timeout time.Duration) error {
+func (a *Adapter) GracefulKillPrefix(prefixPath string, timeout time.Duration) (domain.StopResult, error) {
 	log := a.log
 	pfxDir := filepath.Join(prefixPath, "pfx")
 	log.Debug("graceful kill initiated", "prefix", pfxDir, "timeout", timeout)
+
+	var result domain.StopResult
 
 	// Let Battle.net save its session before the prefix is taken down.
 	if a.IsProcessRunning(prefixPath) {
@@ -368,29 +370,50 @@ func (a *Adapter) GracefulKillPrefix(prefixPath string, timeout time.Duration) e
 	var forceErr error
 	if err := a.KillPrefix(prefixPath); err != nil {
 		log.Debug("wineserver not stopped", "prefix", pfxDir, "error", err)
-	} else if err := a.waitForWineserver(prefixPath, timeout); err != nil {
-		log.Warn("wineserver did not exit, force killing", "error", err)
-		if forceErr = a.forceKillPrefix(prefixPath); forceErr != nil {
-			log.Warn("force killing the wineserver failed", "error", forceErr)
+	} else {
+		result.WineserverStopped = true
+		if err := a.waitForWineserver(prefixPath, timeout); err != nil {
+			log.Warn("wineserver did not exit, force killing", "error", err)
+			if forceErr = a.forceKillPrefix(prefixPath); forceErr != nil {
+				log.Warn("force killing the wineserver failed", "error", forceErr)
+			}
 		}
 	}
 
-	killed := a.KillOrphans(prefixPath)
-	if len(killed) > 0 {
-		log.Info("killed leftover wine processes", "pids", killed)
+	result.Leftovers = a.KillOrphans(prefixPath)
+	if len(result.Leftovers) > 0 {
+		log.Info("killed leftover wine processes", "count", len(result.Leftovers), "processes", stoppedNames(result.Leftovers))
 	}
 
 	remaining, err := a.waitForPrefixExit(prefixPath)
 	if err != nil {
-		return errors.Join(forceErr, fmt.Errorf("verify that %s is stopped: %w", pfxDir, err))
+		return result, errors.Join(forceErr, fmt.Errorf("verify that %s is stopped: %w", pfxDir, err))
 	}
 	if len(remaining) > 0 {
-		err := fmt.Errorf("%d wine process(es) still running in %s: %v", len(remaining), pfxDir, remaining)
-		return errors.Join(forceErr, err)
+		err := fmt.Errorf("%d wine process(es) still running in %s: %s", len(remaining), pfxDir, stoppedNames(processNames(remaining)))
+		return result, errors.Join(forceErr, err)
 	}
 
 	log.Debug("prefix stopped", "prefix", pfxDir)
-	return nil
+	return result, nil
+}
+
+// stoppedNames joins the names of given processes for display.
+func stoppedNames(processes []domain.StoppedProcess) string {
+	names := make([]string, 0, len(processes))
+	for _, process := range processes {
+		names = append(names, process.Name)
+	}
+	return strings.Join(names, ", ")
+}
+
+// processNames converts scanned processes into the processes a caller reports.
+func processNames(processes []prefixProcess) []domain.StoppedProcess {
+	stopped := make([]domain.StoppedProcess, 0, len(processes))
+	for _, process := range processes {
+		stopped = append(stopped, domain.StoppedProcess{PID: process.pid, Name: process.name})
+	}
+	return stopped
 }
 
 // waitForWineserver blocks until the prefix's wineserver exits or timeout elapses.
@@ -436,9 +459,9 @@ func (a *Adapter) forceKillPrefix(prefixPath string) error {
 	return nil
 }
 
-// waitForPrefixExit returns the PIDs of prefix processes that survived SIGKILL.
-// It waits briefly, because a killed process can stay visible for a moment.
-func (a *Adapter) waitForPrefixExit(prefixPath string) ([]int, error) {
+// waitForPrefixExit returns the prefix processes that survived SIGKILL. It waits
+// briefly, because a killed process can stay visible for a moment.
+func (a *Adapter) waitForPrefixExit(prefixPath string) ([]prefixProcess, error) {
 	pfxDir := filepath.Join(prefixPath, "pfx")
 	deadline := time.Now().Add(prefixExitWait)
 
@@ -454,40 +477,52 @@ func (a *Adapter) waitForPrefixExit(prefixPath string) ([]int, error) {
 	}
 }
 
-// KillOrphans kills every process belonging to the prefix. Returns the PIDs of
-// killed processes.
-func (a *Adapter) KillOrphans(prefixPath string) []int {
+// KillOrphans kills every process belonging to the prefix. Returns the killed
+// processes.
+func (a *Adapter) KillOrphans(prefixPath string) []domain.StoppedProcess {
 	pfxDir := filepath.Join(prefixPath, "pfx")
 
-	pids, err := prefixProcesses(pfxDir, "")
+	processes, err := prefixProcesses(pfxDir, "")
 	if err != nil {
 		a.log.Warn("cannot scan for leftover wine processes", "prefix", pfxDir, "error", err)
 		return nil
 	}
 
-	var killed []int
-	for _, pid := range pids {
-		proc, err := os.FindProcess(pid)
+	return a.killProcesses(processes)
+}
+
+// killProcesses SIGKILLs the given processes and returns the ones it killed.
+func (a *Adapter) killProcesses(processes []prefixProcess) []domain.StoppedProcess {
+	var killed []domain.StoppedProcess
+
+	for _, process := range processes {
+		proc, err := os.FindProcess(process.pid)
 		if err != nil {
 			continue
 		}
-		a.log.Debug("killing orphaned process", "pid", pid)
+		a.log.Debug("killing orphaned process", "pid", process.pid, "name", process.name)
 		if err := proc.Signal(syscall.SIGKILL); err == nil {
-			killed = append(killed, pid)
+			killed = append(killed, domain.StoppedProcess{PID: process.pid, Name: process.name})
 		}
 	}
 
 	return killed
 }
 
-// prefixProcesses returns the PIDs of live processes belonging to pfxDir, optionally
+// prefixProcess is a process belonging to a wine prefix.
+type prefixProcess struct {
+	pid  int
+	name string
+}
+
+// prefixProcesses returns the live processes belonging to pfxDir, optionally
 // restricted to processes named name (matched against /proc/<pid>/comm, which the
 // kernel truncates to 15 bytes, so "Battle.net.exe" matches but longer names do
 // not). Wine passes the Unix environment on to every Windows process it starts, so
 // WINEPREFIX identifies a prefix's whole process tree, with or without a wineserver.
-func prefixProcesses(pfxDir, name string) ([]int, error) {
+func prefixProcesses(pfxDir, name string) ([]prefixProcess, error) {
 	myPid := os.Getpid()
-	var pids []int
+	var processes []prefixProcess
 
 	entries, err := os.ReadDir("/proc")
 	if err != nil {
@@ -511,10 +546,10 @@ func prefixProcesses(pfxDir, name string) ([]int, error) {
 			continue
 		}
 
-		pids = append(pids, pid)
+		processes = append(processes, prefixProcess{pid: pid, name: comm})
 	}
 
-	return pids, nil
+	return processes, nil
 }
 
 // readProcess returns the Unix environment and the process name of a PID.

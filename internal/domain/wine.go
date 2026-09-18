@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"fmt"
 	"os"
 	"os/user"
 )
@@ -33,6 +34,27 @@ type WineEnv struct {
 	Vars map[string]string
 	// Unset lists inherited environment variables to remove.
 	Unset []string
+}
+
+// StoppedProcess describes a wine process that stopping a prefix terminated.
+type StoppedProcess struct {
+	// PID is the process id
+	PID int
+	// Name is the process name as the kernel reports it
+	Name string
+}
+
+// String formats the process for display, for example "explorer.exe (pid 1234)".
+func (p StoppedProcess) String() string {
+	return fmt.Sprintf("%s (pid %d)", p.Name, p.PID)
+}
+
+// StopResult reports what stopping a prefix terminated.
+type StopResult struct {
+	// WineserverStopped reports whether a running wineserver was stopped
+	WineserverStopped bool
+	// Leftovers lists the processes without a wineserver that the sweep killed
+	Leftovers []StoppedProcess
 }
 
 // WineUsername returns the current Linux username (used for Wine prefix user paths).

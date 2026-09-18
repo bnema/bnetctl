@@ -128,8 +128,12 @@ func TestGracefulKillAsksBattleNetToCloseFirst(t *testing.T) {
 	t.Cleanup(func() { battleNetCloseWait = oldWait })
 
 	adapter := NewAdapter(log.New(io.Discard))
-	if err := adapter.GracefulKillPrefix(t.TempDir(), time.Second); err != nil {
+	result, err := adapter.GracefulKillPrefix(t.TempDir(), time.Second)
+	if err != nil {
 		t.Fatalf("GracefulKillPrefix: %v", err)
+	}
+	if !result.WineserverStopped || len(result.Leftovers) != 0 {
+		t.Fatalf("expected the wineserver to be stopped, got %+v", result)
 	}
 
 	got, err := os.ReadFile(logPath)
@@ -163,9 +167,11 @@ func TestGracefulKillReapsLeftoversWithoutWineserver(t *testing.T) {
 	leftover := startFakeWineProcess(t, "sleep", "WINEPREFIX="+winePrefixPath(prefixPath), "WINESERVERSOCKET=/tmp/server.sock")
 
 	adapter := NewAdapter(log.New(io.Discard))
-	if err := adapter.GracefulKillPrefix(prefixPath, time.Second); err != nil {
+	result, err := adapter.GracefulKillPrefix(prefixPath, time.Second)
+	if err != nil {
 		t.Fatalf("GracefulKillPrefix: %v", err)
 	}
+	requireStopped(t, result, leftover, "sleep")
 
 	waitForExit(t, leftover)
 }
@@ -180,9 +186,11 @@ func TestGracefulKillReapsWindowsNamedLeftovers(t *testing.T) {
 	leftover := startFakeWineProcess(t, "leftover.exe", "WINEPREFIX="+winePrefixPath(prefixPath))
 
 	adapter := NewAdapter(log.New(io.Discard))
-	if err := adapter.GracefulKillPrefix(prefixPath, time.Second); err != nil {
+	result, err := adapter.GracefulKillPrefix(prefixPath, time.Second)
+	if err != nil {
 		t.Fatalf("GracefulKillPrefix: %v", err)
 	}
+	requireStopped(t, result, leftover, "leftover.exe")
 
 	waitForExit(t, leftover)
 }
@@ -197,9 +205,11 @@ func TestGracefulKillLeavesForeignProcessesAlone(t *testing.T) {
 	foreign := startFakeWineProcess(t, "sleep", "WINEPREFIX="+winePrefixPath(prefixPath))
 
 	adapter := NewAdapter(log.New(io.Discard))
-	if err := adapter.GracefulKillPrefix(prefixPath, time.Second); err != nil {
+	result, err := adapter.GracefulKillPrefix(prefixPath, time.Second)
+	if err != nil {
 		t.Fatalf("GracefulKillPrefix: %v", err)
 	}
+	requireNothingStopped(t, result)
 
 	requireAlive(t, foreign)
 }
@@ -213,9 +223,11 @@ func TestGracefulKillLeavesNeighbouringPrefixesAlone(t *testing.T) {
 	neighbour := startFakeWineProcess(t, "leftover.exe", "WINEPREFIX="+winePrefixPath(prefixPath)+"-backup")
 
 	adapter := NewAdapter(log.New(io.Discard))
-	if err := adapter.GracefulKillPrefix(prefixPath, time.Second); err != nil {
+	result, err := adapter.GracefulKillPrefix(prefixPath, time.Second)
+	if err != nil {
 		t.Fatalf("GracefulKillPrefix: %v", err)
 	}
+	requireNothingStopped(t, result)
 
 	requireAlive(t, neighbour)
 }
@@ -260,6 +272,31 @@ func startFakeWineProcess(t *testing.T, name string, env ...string) *exec.Cmd {
 	}
 	t.Cleanup(func() { _ = cmd.Process.Kill() })
 	return cmd
+}
+
+// requireStopped fails the test unless the result reports exactly the given process.
+func requireStopped(t *testing.T, result domain.StopResult, cmd *exec.Cmd, name string) {
+	t.Helper()
+
+	if result.WineserverStopped {
+		t.Fatalf("no wineserver was running, got %+v", result)
+	}
+	if len(result.Leftovers) != 1 {
+		t.Fatalf("expected 1 stopped process, got %+v", result.Leftovers)
+	}
+	if stopped := result.Leftovers[0]; stopped.PID != cmd.Process.Pid || stopped.Name != name {
+		t.Fatalf("expected %s (pid %d), got %s", name, cmd.Process.Pid, stopped)
+	}
+}
+
+// requireNothingStopped fails the test when a stop reports work it should not have
+// done.
+func requireNothingStopped(t *testing.T, result domain.StopResult) {
+	t.Helper()
+
+	if result.WineserverStopped || len(result.Leftovers) != 0 {
+		t.Fatalf("expected nothing to be stopped, got %+v", result)
+	}
 }
 
 // waitForExit fails the test unless the process exits on its own.

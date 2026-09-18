@@ -9,6 +9,7 @@ import (
 
 	"github.com/bnema/bnetctl/internal/adapters/wine"
 	"github.com/bnema/bnetctl/internal/adapters/xdg"
+	"github.com/bnema/bnetctl/internal/domain"
 	"github.com/bnema/bnetctl/internal/ui/styles"
 )
 
@@ -45,7 +46,9 @@ func runKill(cmd *cobra.Command, args []string) error {
 	log.Info("killing wine processes", "prefix", cfg.PrefixDir)
 
 	fmt.Println("Stopping Battle.net and Wine processes...")
-	if err := runtime.GracefulKillPrefix(cfg.PrefixDir, killTimeout); err != nil {
+	result, err := runtime.GracefulKillPrefix(cfg.PrefixDir, killTimeout)
+	printStopResult(result)
+	if err != nil {
 		log.Error("kill failed", "error", err)
 		fmt.Fprintln(os.Stderr, styles.Error.Render("Kill incomplete: ")+err.Error())
 		return err
@@ -54,4 +57,18 @@ func runKill(cmd *cobra.Command, args []string) error {
 	log.Info("wine processes stopped")
 	fmt.Println(styles.Success.Render("Done."))
 	return nil
+}
+
+// printStopResult reports what the stop terminated, so a kill that found nothing
+// running is not mistaken for a shutdown that did something.
+func printStopResult(result domain.StopResult) {
+	if result.WineserverStopped {
+		fmt.Println("  " + styles.Muted.Render("stopped the wineserver"))
+	}
+	for _, process := range result.Leftovers {
+		fmt.Println("  " + styles.Muted.Render("killed leftover "+process.String()))
+	}
+	if !result.WineserverStopped && len(result.Leftovers) == 0 {
+		fmt.Println("  " + styles.Muted.Render("nothing was running"))
+	}
 }

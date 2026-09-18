@@ -37,7 +37,9 @@ func (f *fakeRuntime) RunExeAsync(string, string, *domain.WineEnv, ...string) (<
 	return done, nil
 }
 
-func (f *fakeRuntime) GracefulKillPrefix(string, time.Duration) error { return nil }
+func (f *fakeRuntime) GracefulKillPrefix(string, time.Duration) (domain.StopResult, error) {
+	return domain.StopResult{WineserverStopped: true}, nil
+}
 
 // fakeFilesystem implements only the FilesystemPort methods used by LaunchService.
 type fakeFilesystem struct {
