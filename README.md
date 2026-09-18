@@ -36,8 +36,7 @@ bnetctl launch           # Start Battle.net using native Wayland
 bnetctl launch --display-driver x11 # Start through X11/XWayland
 bnetctl desktop add      # Create Wayland and X11 menu entries
 bnetctl desktop remove   # Remove .desktop menu entry
-bnetctl kill             # Stop Battle.net
-bnetctl kill -a          # Kill all orphaned Wine processes
+bnetctl kill             # Stop Battle.net, including leftover Wine processes
 bnetctl clean            # Remove cache and prefix
 bnetctl clean -a         # Full purge (cache, prefix, desktop entry, data)
 ```

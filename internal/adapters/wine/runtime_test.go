@@ -1,8 +1,10 @@
 package wine
 
 import (
+	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -82,9 +84,10 @@ func TestResolveBinariesUsesOverrideDirectory(t *testing.T) {
 }
 
 // fakeWineBinaries writes stub wine/wineboot/wineserver scripts that append their
-// arguments to an invocation log, and points the adapter at them. It returns the
-// path of that log.
-func fakeWineBinaries(t *testing.T) string {
+// arguments to an invocation log, and points the adapter at them. The wineserver
+// stub exits with wineserverExit, which is 1 when no wineserver is running for the
+// prefix. It returns the path of that log.
+func fakeWineBinaries(t *testing.T, wineserverExit int) string {
 	t.Helper()
 
 	dir := t.TempDir()
@@ -100,7 +103,8 @@ func fakeWineBinaries(t *testing.T) string {
 
 	wineserver := filepath.Join(dir, "wineserver")
 	serverScript := "#!/bin/sh\n" +
-		"printf 'wineserver %s\\n' \"$*\" >> '" + logPath + "'\n"
+		"printf 'wineserver %s\\n' \"$*\" >> '" + logPath + "'\n" +
+		fmt.Sprintf("exit %d\n", wineserverExit)
 	if err := os.WriteFile(wineserver, []byte(serverScript), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +121,7 @@ func fakeWineBinaries(t *testing.T) string {
 // Killing it outright leaves no chance to save the session, and the next start
 // then needs an interactive login, which does not complete under Wine Wayland.
 func TestGracefulKillAsksBattleNetToCloseFirst(t *testing.T) {
-	logPath := fakeWineBinaries(t)
+	logPath := fakeWineBinaries(t, 0)
 
 	oldWait := battleNetCloseWait
 	battleNetCloseWait = 0
@@ -144,5 +148,35 @@ func TestGracefulKillAsksBattleNetToCloseFirst(t *testing.T) {
 	}
 	if closeIdx > killIdx {
 		t.Fatalf("wineserver was stopped before Battle.net was asked to close:\n%s", calls)
+	}
+}
+
+// TestGracefulKillReapsLeftoversWithoutWineserver guards the leftover fix: a prefix
+// whose wineserver is gone still holds wine processes, and a shutdown used to return
+// as soon as `wineserver -k` failed, leaving them running forever.
+func TestGracefulKillReapsLeftoversWithoutWineserver(t *testing.T) {
+	// wineserver exits 1 on every call, which is what wine reports when the prefix
+	// has no server left.
+	fakeWineBinaries(t, 1)
+
+	prefixPath := t.TempDir()
+	leftover := exec.Command("sleep", "60")
+	leftover.Env = append(os.Environ(), "WINEPREFIX="+filepath.Join(prefixPath, "pfx"))
+	if err := leftover.Start(); err != nil {
+		t.Fatalf("start leftover process: %v", err)
+	}
+	t.Cleanup(func() { _ = leftover.Process.Kill() })
+
+	adapter := NewAdapter(log.New(io.Discard))
+	if err := adapter.GracefulKillPrefix(prefixPath, time.Second); err != nil {
+		t.Fatalf("GracefulKillPrefix: %v", err)
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- leftover.Wait() }()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("leftover wine process survived the kill")
 	}
 }
