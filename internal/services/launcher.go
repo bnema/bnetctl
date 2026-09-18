@@ -124,7 +124,7 @@ func (s *LaunchService) Launch() (*LaunchResult, error) {
 	if result, err := s.runtime.GracefulKillPrefix(s.cfg.PrefixDir, 5*time.Second); err != nil {
 		log.Warn("shutdown incomplete", "error", err)
 	} else {
-		log.Info("stopped wine processes", "wineserver", result.WineserverStopped, "leftovers", len(result.Leftovers))
+		log.Info("stopped wine processes", "wineserver", result.Wineserver != nil, "session", len(result.Session), "leftovers", len(result.Leftovers))
 	}
 
 	return &LaunchResult{Runtime: rt}, runErr

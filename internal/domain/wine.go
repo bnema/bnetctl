@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/user"
+	"strings"
 )
 
 // WineRuntime represents a detected Wine installation
@@ -36,7 +37,7 @@ type WineEnv struct {
 	Unset []string
 }
 
-// StoppedProcess describes a wine process that stopping a prefix terminated.
+// StoppedProcess describes a wine process involved in stopping a prefix.
 type StoppedProcess struct {
 	// PID is the process id
 	PID int
@@ -49,12 +50,28 @@ func (p StoppedProcess) String() string {
 	return fmt.Sprintf("%s (pid %d)", p.Name, p.PID)
 }
 
+// StoppedProcesses is a list of processes, formatted for display.
+type StoppedProcesses []StoppedProcess
+
+// String joins the processes, for example "wineserver (pid 9), explorer.exe (pid 42)".
+func (p StoppedProcesses) String() string {
+	described := make([]string, 0, len(p))
+	for _, process := range p {
+		described = append(described, process.String())
+	}
+	return strings.Join(described, ", ")
+}
+
 // StopResult reports what stopping a prefix terminated.
 type StopResult struct {
-	// WineserverStopped reports whether a running wineserver was stopped
-	WineserverStopped bool
+	// Wineserver is the wineserver that was stopped, nil when none was running
+	Wineserver *StoppedProcess
+	// Session lists the wine processes the wineserver was holding when the stop
+	// started. The wineserver terminates them itself, so they cannot be observed
+	// afterwards.
+	Session StoppedProcesses
 	// Leftovers lists the processes without a wineserver that the sweep killed
-	Leftovers []StoppedProcess
+	Leftovers StoppedProcesses
 }
 
 // WineUsername returns the current Linux username (used for Wine prefix user paths).

@@ -63,13 +63,27 @@ func runKill(cmd *cobra.Command, args []string) error {
 // running is not mistaken for a shutdown that did something. verified is false when
 // the stop could not be confirmed, in which case nothing positive is claimed.
 func printStopResult(result domain.StopResult, verified bool) {
-	if result.WineserverStopped {
-		fmt.Println("  " + styles.Muted.Render("stopped the wineserver"))
+	if result.Wineserver != nil {
+		fmt.Println("  " + styles.Muted.Render("stopped "+result.Wineserver.String()))
+	}
+	if len(result.Session) > 0 {
+		line := pluralProcesses(len(result.Session)) + ": " + result.Session.String()
+		fmt.Println("  " + styles.Muted.Render("stopped "+line))
 	}
 	for _, process := range result.Leftovers {
-		fmt.Println("  " + styles.Muted.Render("killed leftover "+process.String()))
+		fmt.Println("  " + styles.Muted.Render("killed "+process.String()))
 	}
-	if verified && !result.WineserverStopped && len(result.Leftovers) == 0 {
+
+	idle := result.Wineserver == nil && len(result.Session) == 0 && len(result.Leftovers) == 0
+	if verified && idle {
 		fmt.Println("  " + styles.Muted.Render("nothing was running"))
 	}
+}
+
+// pluralProcesses formats a process count, for example "1 wine process".
+func pluralProcesses(count int) string {
+	if count == 1 {
+		return "1 wine process"
+	}
+	return fmt.Sprintf("%d wine processes", count)
 }

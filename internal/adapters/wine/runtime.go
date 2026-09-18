@@ -255,8 +255,8 @@ func (a *Adapter) IsProcessRunning(prefixPath string) bool {
 	return cmd.Run() == nil
 }
 
-// KillPrefix stops all Wine processes in the given prefix
-func (a *Adapter) KillPrefix(prefixPath string) error {
+// stopWineserver asks the prefix's wineserver to stop; it fails when none is running.
+func (a *Adapter) stopWineserver(prefixPath string) error {
 	log := a.log
 
 	_, _, wineServerBin, err := resolveBinaries()
@@ -368,24 +368,28 @@ func (a *Adapter) GracefulKillPrefix(prefixPath string, timeout time.Duration) (
 		a.waitForBattleNetExit(prefixPath, battleNetCloseWait)
 	}
 
+	// Snapshot what is still running: the wineserver terminates its own clients, so
+	// they cannot be listed after the stop.
+	if session, err := prefixProcesses(pfxDir, ""); err == nil {
+		result.Session, result.Wineserver = splitWineserver(processNames(session))
+	}
+
 	// Stop the wineserver. When none is running, the prefix only holds leftovers
 	// from an earlier run, and the sweep below is what removes them.
 	var forceErr error
-	if err := a.KillPrefix(prefixPath); err != nil {
+	if err := a.stopWineserver(prefixPath); err != nil {
 		log.Debug("wineserver not stopped", "prefix", pfxDir, "error", err)
-	} else {
-		result.WineserverStopped = true
-		if err := a.waitForWineserver(prefixPath, timeout); err != nil {
-			log.Warn("wineserver did not exit, force killing", "error", err)
-			if forceErr = a.forceKillPrefix(prefixPath); forceErr != nil {
-				log.Warn("force killing the wineserver failed", "error", forceErr)
-			}
+		result.Wineserver = nil
+	} else if err := a.waitForWineserver(prefixPath, timeout); err != nil {
+		log.Warn("wineserver did not exit, force killing", "error", err)
+		if forceErr = a.forceKillPrefix(prefixPath); forceErr != nil {
+			log.Warn("force killing the wineserver failed", "error", forceErr)
 		}
 	}
 
-	result.Leftovers = a.KillOrphans(prefixPath)
+	result.Leftovers = a.killLeftovers(prefixPath)
 	if len(result.Leftovers) > 0 {
-		log.Info("killed leftover wine processes", "count", len(result.Leftovers), "processes", joinProcesses(result.Leftovers))
+		log.Info("killed leftover wine processes", "count", len(result.Leftovers), "processes", result.Leftovers.String())
 	}
 
 	remaining, err := a.waitForPrefixExit(prefixPath)
@@ -393,17 +397,20 @@ func (a *Adapter) GracefulKillPrefix(prefixPath string, timeout time.Duration) (
 		return result, errors.Join(forceErr, fmt.Errorf("verify that %s is stopped: %w", pfxDir, err))
 	}
 
-	// A survivor makes the stop incomplete, so drop it from what is reported as
-	// stopped, and stop claiming the wineserver is gone when it is one of them.
-	// A process can accept SIGKILL and still not die (hung I/O), and a wineserver
-	// can survive both -k and -k9.
-	result.Leftovers = withoutSurvivors(result.Leftovers, remaining)
-	if containsWineserver(remaining) {
-		result.WineserverStopped = false
+	// A survivor makes the stop incomplete: never report a process that is still
+	// running as stopped. A process can accept SIGKILL and not die (hung I/O), and
+	// a wineserver can survive both -k and -k9.
+	survivors := pidSet(remaining)
+	result.Session = excluding(result.Session, survivors)
+	result.Leftovers = excluding(result.Leftovers, survivors)
+	// The sweep catches leftovers the snapshot also saw; report each process once.
+	result.Session = excluding(result.Session, pidSet(result.Leftovers))
+	if result.Wineserver != nil && survivors[result.Wineserver.PID] {
+		result.Wineserver = nil
 	}
 
 	if len(remaining) > 0 {
-		err := fmt.Errorf("%d wine process(es) still running in %s: %s", len(remaining), pfxDir, joinProcesses(remaining))
+		err := fmt.Errorf("%d wine process(es) still running in %s: %s", len(remaining), pfxDir, remaining.String())
 		return result, errors.Join(forceErr, err)
 	}
 
@@ -411,48 +418,46 @@ func (a *Adapter) GracefulKillPrefix(prefixPath string, timeout time.Duration) (
 	return result, nil
 }
 
-// joinProcesses formats processes for display.
-func joinProcesses(processes []domain.StoppedProcess) string {
-	names := make([]string, 0, len(processes))
+// splitWineserver separates the wineserver from the rest of a process list.
+func splitWineserver(processes domain.StoppedProcesses) (clients domain.StoppedProcesses, server *domain.StoppedProcess) {
+	clients = make(domain.StoppedProcesses, 0, len(processes))
 	for _, process := range processes {
-		names = append(names, process.String())
+		if process.Name == wineServerProcessName {
+			server = &process
+			continue
+		}
+		clients = append(clients, process)
 	}
-	return strings.Join(names, ", ")
+	return clients, server
 }
 
-// withoutSurvivors keeps the processes that are really gone.
-func withoutSurvivors(reported, survivors []domain.StoppedProcess) []domain.StoppedProcess {
-	if len(survivors) == 0 {
-		return reported
+// pidSet indexes processes by pid.
+func pidSet(processes domain.StoppedProcesses) map[int]bool {
+	set := make(map[int]bool, len(processes))
+	for _, process := range processes {
+		set[process.PID] = true
+	}
+	return set
+}
+
+// excluding drops the processes whose pid is in the set.
+func excluding(processes domain.StoppedProcesses, remove map[int]bool) domain.StoppedProcesses {
+	if len(remove) == 0 {
+		return processes
 	}
 
-	alive := make(map[int]bool, len(survivors))
-	for _, process := range survivors {
-		alive[process.PID] = true
-	}
-
-	kept := make([]domain.StoppedProcess, 0, len(reported))
-	for _, process := range reported {
-		if !alive[process.PID] {
+	kept := make(domain.StoppedProcesses, 0, len(processes))
+	for _, process := range processes {
+		if !remove[process.PID] {
 			kept = append(kept, process)
 		}
 	}
 	return kept
 }
 
-// containsWineserver reports whether the prefix's wineserver is still running.
-func containsWineserver(processes []domain.StoppedProcess) bool {
-	for _, process := range processes {
-		if process.Name == wineServerProcessName {
-			return true
-		}
-	}
-	return false
-}
-
 // processNames converts scanned processes into the processes a caller reports.
-func processNames(processes []prefixProcess) []domain.StoppedProcess {
-	stopped := make([]domain.StoppedProcess, 0, len(processes))
+func processNames(processes []prefixProcess) domain.StoppedProcesses {
+	stopped := make(domain.StoppedProcesses, 0, len(processes))
 	for _, process := range processes {
 		stopped = append(stopped, domain.StoppedProcess{PID: process.pid, Name: process.name})
 	}
@@ -504,7 +509,7 @@ func (a *Adapter) forceKillPrefix(prefixPath string) error {
 
 // waitForPrefixExit returns the prefix processes that survived SIGKILL. It waits
 // briefly, because a killed process can stay visible for a moment.
-func (a *Adapter) waitForPrefixExit(prefixPath string) ([]domain.StoppedProcess, error) {
+func (a *Adapter) waitForPrefixExit(prefixPath string) (domain.StoppedProcesses, error) {
 	pfxDir := filepath.Join(prefixPath, "pfx")
 	deadline := time.Now().Add(prefixExitWait)
 
@@ -520,9 +525,9 @@ func (a *Adapter) waitForPrefixExit(prefixPath string) ([]domain.StoppedProcess,
 	}
 }
 
-// KillOrphans kills every process belonging to the prefix. Returns the killed
-// processes.
-func (a *Adapter) KillOrphans(prefixPath string) []domain.StoppedProcess {
+// killLeftovers kills every process belonging to the prefix, which is what is left
+// when the wineserver is gone or was force killed. Returns the killed processes.
+func (a *Adapter) killLeftovers(prefixPath string) domain.StoppedProcesses {
 	pfxDir := filepath.Join(prefixPath, "pfx")
 
 	processes, err := prefixProcesses(pfxDir, "")
@@ -535,8 +540,8 @@ func (a *Adapter) KillOrphans(prefixPath string) []domain.StoppedProcess {
 }
 
 // killProcesses SIGKILLs the given processes and returns the ones it killed.
-func (a *Adapter) killProcesses(processes []prefixProcess) []domain.StoppedProcess {
-	var killed []domain.StoppedProcess
+func (a *Adapter) killProcesses(processes []prefixProcess) domain.StoppedProcesses {
+	var killed domain.StoppedProcesses
 
 	for _, process := range processes {
 		proc, err := os.FindProcess(process.pid)

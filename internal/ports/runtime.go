@@ -29,17 +29,9 @@ type RuntimePort interface {
 	// IsProcessRunning checks if a Wine process is running in the given prefix
 	IsProcessRunning(prefixPath string) bool
 
-	// KillPrefix stops all Wine processes in the given prefix
-	KillPrefix(prefixPath string) error
-
 	// GracefulKillPrefix stops everything running in the prefix, waits up to
 	// timeout for the wineserver to exit before force killing it, and sweeps
 	// processes left without a wineserver. The returned result reports what was
 	// stopped, and an error reports what survived.
 	GracefulKillPrefix(prefixPath string, timeout time.Duration) (domain.StopResult, error)
-
-	// KillOrphans kills every process belonging to the given prefix, including
-	// leftovers that have no wineserver left to stop. Returns the killed
-	// processes.
-	KillOrphans(prefixPath string) []domain.StoppedProcess
 }

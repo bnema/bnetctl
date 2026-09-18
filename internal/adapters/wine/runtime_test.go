@@ -132,9 +132,7 @@ func TestGracefulKillAsksBattleNetToCloseFirst(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GracefulKillPrefix: %v", err)
 	}
-	if !result.WineserverStopped || len(result.Leftovers) != 0 {
-		t.Fatalf("expected the wineserver to be stopped, got %+v", result)
-	}
+	requireNothingStopped(t, result)
 
 	got, err := os.ReadFile(logPath)
 	if err != nil {
@@ -278,7 +276,7 @@ func startFakeWineProcess(t *testing.T, name string, env ...string) *exec.Cmd {
 func requireStopped(t *testing.T, result domain.StopResult, cmd *exec.Cmd, name string) {
 	t.Helper()
 
-	if result.WineserverStopped {
+	if result.Wineserver != nil || len(result.Session) != 0 {
 		t.Fatalf("no wineserver was running, got %+v", result)
 	}
 	if len(result.Leftovers) != 1 {
@@ -294,32 +292,46 @@ func requireStopped(t *testing.T, result domain.StopResult, cmd *exec.Cmd, name 
 func requireNothingStopped(t *testing.T, result domain.StopResult) {
 	t.Helper()
 
-	if result.WineserverStopped || len(result.Leftovers) != 0 {
+	if result.Wineserver != nil || len(result.Session) != 0 || len(result.Leftovers) != 0 {
 		t.Fatalf("expected nothing to be stopped, got %+v", result)
 	}
 }
 
-// TestWithoutSurvivors guards the report: a process that accepted SIGKILL but is
-// still running must never be listed as stopped.
-func TestWithoutSurvivors(t *testing.T) {
-	reported := []domain.StoppedProcess{{PID: 1, Name: "explorer.exe"}, {PID: 2, Name: "services.exe"}}
+// TestExcluding guards the report: a process that accepted SIGKILL but is still
+// running must never be listed as stopped.
+func TestExcluding(t *testing.T) {
+	reported := domain.StoppedProcesses{{PID: 1, Name: "explorer.exe"}, {PID: 2, Name: "services.exe"}}
 
-	kept := withoutSurvivors(reported, []domain.StoppedProcess{{PID: 2, Name: "services.exe"}})
+	kept := excluding(reported, pidSet(domain.StoppedProcesses{{PID: 2, Name: "services.exe"}}))
 	if len(kept) != 1 || kept[0].PID != 1 {
 		t.Fatalf("expected only pid 1 to be reported, got %+v", kept)
 	}
-	if got := withoutSurvivors(reported, nil); len(got) != 2 {
+	if got := excluding(reported, nil); len(got) != 2 {
 		t.Fatalf("expected both processes to be reported, got %+v", got)
 	}
-	if got := withoutSurvivors(nil, reported); len(got) != 0 {
+	if got := excluding(nil, pidSet(reported)); len(got) != 0 {
 		t.Fatalf("expected nothing to be reported, got %+v", got)
 	}
+}
 
-	if !containsWineserver([]domain.StoppedProcess{{PID: 3, Name: wineServerProcessName}}) {
-		t.Fatal("a surviving wineserver must be detected")
+// TestSplitWineserver guards the session report: the wineserver is reported on its
+// own and the clients are listed without it.
+func TestSplitWineserver(t *testing.T) {
+	clients, server := splitWineserver(domain.StoppedProcesses{
+		{PID: 1, Name: "wineserver"},
+		{PID: 2, Name: "explorer.exe"},
+	})
+
+	if server == nil || server.PID != 1 {
+		t.Fatalf("expected the wineserver (pid 1), got %v", server)
 	}
-	if containsWineserver(kept) {
-		t.Fatalf("no wineserver survived, got %+v", kept)
+	if len(clients) != 1 || clients[0].PID != 2 {
+		t.Fatalf("expected only the client to be listed, got %+v", clients)
+	}
+
+	clients, server = splitWineserver(nil)
+	if server != nil || len(clients) != 0 {
+		t.Fatalf("expected nothing to be split, got %v and %+v", server, clients)
 	}
 }
 

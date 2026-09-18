@@ -20,31 +20,47 @@ func TestPrintStopResult(t *testing.T) {
 		absent   []string
 	}{
 		{
-			name:     "wineserver stopped",
-			result:   domain.StopResult{WineserverStopped: true},
+			name: "wineserver and its clients",
+			result: domain.StopResult{
+				Wineserver: &domain.StoppedProcess{PID: 9, Name: "wineserver"},
+				Session: domain.StoppedProcesses{
+					{PID: 42, Name: "Battle.net.exe"},
+					{PID: 43, Name: "explorer.exe"},
+				},
+			},
 			verified: true,
-			want:     []string{"stopped the wineserver"},
-			absent:   []string{"nothing was running"},
+			want: []string{
+				"stopped wineserver (pid 9)",
+				"stopped 2 wine processes: Battle.net.exe (pid 42), explorer.exe (pid 43)",
+			},
+			absent: []string{"nothing was running"},
 		},
 		{
-			name:     "leftover killed",
-			result:   domain.StopResult{Leftovers: []domain.StoppedProcess{{PID: 42, Name: "explorer.exe"}}},
+			name:     "single client",
+			result:   domain.StopResult{Session: domain.StoppedProcesses{{PID: 7, Name: "notepad.exe"}}},
 			verified: true,
-			want:     []string{"killed leftover explorer.exe (pid 42)"},
-			absent:   []string{"nothing was running"},
+			want:     []string{"stopped 1 wine process: notepad.exe (pid 7)"},
+			absent:   []string{"wine processes"},
+		},
+		{
+			name:     "leftovers without a wineserver",
+			result:   domain.StopResult{Leftovers: domain.StoppedProcesses{{PID: 42, Name: "explorer.exe"}}},
+			verified: true,
+			want:     []string{"killed explorer.exe (pid 42)"},
+			absent:   []string{"nothing was running", "stopped wineserver"},
 		},
 		{
 			name:     "idle prefix",
 			result:   domain.StopResult{},
 			verified: true,
 			want:     []string{"nothing was running"},
-			absent:   []string{"stopped the wineserver", "killed leftover"},
+			absent:   []string{"stopped wineserver", "killed "},
 		},
 		{
 			name:     "unverified stop claims nothing",
 			result:   domain.StopResult{},
 			verified: false,
-			absent:   []string{"nothing was running", "stopped the wineserver", "killed leftover"},
+			absent:   []string{"nothing was running", "stopped wineserver", "killed "},
 		},
 	}
 
