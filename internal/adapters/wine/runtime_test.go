@@ -160,23 +160,127 @@ func TestGracefulKillReapsLeftoversWithoutWineserver(t *testing.T) {
 	fakeWineBinaries(t, 1)
 
 	prefixPath := t.TempDir()
-	leftover := exec.Command("sleep", "60")
-	leftover.Env = append(os.Environ(), "WINEPREFIX="+filepath.Join(prefixPath, "pfx"))
-	if err := leftover.Start(); err != nil {
-		t.Fatalf("start leftover process: %v", err)
-	}
-	t.Cleanup(func() { _ = leftover.Process.Kill() })
+	leftover := startFakeWineProcess(t, "sleep", "WINEPREFIX="+winePrefixPath(prefixPath), "WINESERVERSOCKET=/tmp/server.sock")
 
 	adapter := NewAdapter(log.New(io.Discard))
 	if err := adapter.GracefulKillPrefix(prefixPath, time.Second); err != nil {
 		t.Fatalf("GracefulKillPrefix: %v", err)
 	}
 
+	waitForExit(t, leftover)
+}
+
+// TestGracefulKillReapsWindowsNamedLeftovers covers the other half of the process
+// scan: wine names Windows processes after the executable it runs, and the name
+// alone must be enough to recognize them.
+func TestGracefulKillReapsWindowsNamedLeftovers(t *testing.T) {
+	fakeWineBinaries(t, 1)
+
+	prefixPath := t.TempDir()
+	leftover := startFakeWineProcess(t, "leftover.exe", "WINEPREFIX="+winePrefixPath(prefixPath))
+
+	adapter := NewAdapter(log.New(io.Discard))
+	if err := adapter.GracefulKillPrefix(prefixPath, time.Second); err != nil {
+		t.Fatalf("GracefulKillPrefix: %v", err)
+	}
+
+	waitForExit(t, leftover)
+}
+
+// TestGracefulKillLeavesForeignProcessesAlone guards against killing whatever else
+// inherits WINEPREFIX, for example a terminal or editor started from a shell with
+// WINEPREFIX exported.
+func TestGracefulKillLeavesForeignProcessesAlone(t *testing.T) {
+	fakeWineBinaries(t, 1)
+
+	prefixPath := t.TempDir()
+	foreign := startFakeWineProcess(t, "sleep", "WINEPREFIX="+winePrefixPath(prefixPath))
+
+	adapter := NewAdapter(log.New(io.Discard))
+	if err := adapter.GracefulKillPrefix(prefixPath, time.Second); err != nil {
+		t.Fatalf("GracefulKillPrefix: %v", err)
+	}
+
+	requireAlive(t, foreign)
+}
+
+// TestGracefulKillLeavesNeighbouringPrefixesAlone guards the exact environment
+// match: "WINEPREFIX=<prefix>/pfx-backup" must not be mistaken for the prefix.
+func TestGracefulKillLeavesNeighbouringPrefixesAlone(t *testing.T) {
+	fakeWineBinaries(t, 1)
+
+	prefixPath := t.TempDir()
+	neighbour := startFakeWineProcess(t, "leftover.exe", "WINEPREFIX="+winePrefixPath(prefixPath)+"-backup")
+
+	adapter := NewAdapter(log.New(io.Discard))
+	if err := adapter.GracefulKillPrefix(prefixPath, time.Second); err != nil {
+		t.Fatalf("GracefulKillPrefix: %v", err)
+	}
+
+	requireAlive(t, neighbour)
+}
+
+// winePrefixPath returns the prefix directory a wine process reports as WINEPREFIX.
+func winePrefixPath(prefixPath string) string {
+	return filepath.Join(prefixPath, "pfx")
+}
+
+// startFakeWineProcess starts a long-running process that the prefix scan accepts as
+// part of a wine session, either through wine's environment (env) or through a
+// Windows executable name. A name other than "sleep" runs a copy of the sleep
+// binary, so /proc/<pid>/comm matches it.
+func startFakeWineProcess(t *testing.T, name string, env ...string) *exec.Cmd {
+	t.Helper()
+
+	sleep, err := exec.LookPath("sleep")
+	if err != nil {
+		t.Skipf("sleep is unavailable: %v", err)
+	}
+
+	exe := sleep
+	if name != filepath.Base(sleep) {
+		data, err := os.ReadFile(sleep)
+		if err != nil {
+			t.Fatal(err)
+		}
+		exe = filepath.Join(t.TempDir(), name)
+		if err := os.WriteFile(exe, data, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cmd := exec.Command(exe, "60")
+	cmd.Env = append(os.Environ(), env...)
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start %s: %v", name, err)
+	}
+	t.Cleanup(func() { _ = cmd.Process.Kill() })
+	return cmd
+}
+
+// waitForExit fails the test unless the process exits on its own.
+func waitForExit(t *testing.T, cmd *exec.Cmd) {
+	t.Helper()
+
 	done := make(chan error, 1)
-	go func() { done <- leftover.Wait() }()
+	go func() { done <- cmd.Wait() }()
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
-		t.Fatal("leftover wine process survived the kill")
+		t.Fatalf("process %d survived the kill", cmd.Process.Pid)
+	}
+}
+
+// requireAlive fails the test when a process that had to be left alone is gone.
+func requireAlive(t *testing.T, cmd *exec.Cmd) {
+	t.Helper()
+
+	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", cmd.Process.Pid))
+	if err != nil {
+		t.Fatalf("process %d was killed: %v", cmd.Process.Pid, err)
+	}
+	fields := strings.Fields(string(data))
+	if len(fields) < 3 || fields[2] == "Z" {
+		t.Fatalf("process %d is not running: %s", cmd.Process.Pid, string(data))
 	}
 }

@@ -2,6 +2,7 @@ package services
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/charmbracelet/log"
 
@@ -53,12 +54,10 @@ func (s *CleanerService) CleanPrefix() error {
 	log := s.log
 	log.Debug("cleaning prefix", "path", s.cfg.PrefixDir)
 
-	// Kill any running Wine processes
-	if s.runtime.IsProcessRunning(s.cfg.PrefixDir) {
-		log.Debug("killing running wine processes before prefix removal")
-		if err := s.runtime.KillPrefix(s.cfg.PrefixDir); err != nil {
-			return fmt.Errorf("kill wine processes: %w", err)
-		}
+	// A prefix whose wineserver is gone still holds wine processes, and removing
+	// the directory under them leaves them running against deleted files.
+	if err := s.runtime.GracefulKillPrefix(s.cfg.PrefixDir, 10*time.Second); err != nil {
+		log.Warn("stopping wine processes before removing the prefix failed", "error", err)
 	}
 
 	if s.fs.Exists(s.cfg.PrefixDir) {

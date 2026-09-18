@@ -161,7 +161,9 @@ func (s *InstallerService) Install(progressFn func(InstallProgress)) (*domain.In
 		}
 	case <-timeout.C:
 		log.Error("installer timed out")
-		_ = s.runtime.GracefulKillPrefix(s.cfg.PrefixDir, 10*time.Second)
+		if err := s.runtime.GracefulKillPrefix(s.cfg.PrefixDir, 10*time.Second); err != nil {
+			log.Warn("stopping the timed-out installer failed", "error", err)
+		}
 		return nil, fmt.Errorf("installation timed out after 30 minutes")
 	}
 
@@ -170,7 +172,9 @@ func (s *InstallerService) Install(progressFn func(InstallProgress)) (*domain.In
 	time.Sleep(10 * time.Second)
 	log.Debug("post-install settle complete, cleaning up")
 
-	_ = s.runtime.GracefulKillPrefix(s.cfg.PrefixDir, 10*time.Second)
+	if err := s.runtime.GracefulKillPrefix(s.cfg.PrefixDir, 10*time.Second); err != nil {
+		log.Warn("cleanup after install incomplete", "error", err)
+	}
 
 	if err := EnsureBattleNetConfig(s.cfg.PrefixDir, s.fs, s.log); err != nil {
 		log.Error("ensure battle.net config failed", "error", err)

@@ -32,12 +32,10 @@ type RuntimePort interface {
 	// KillPrefix stops all Wine processes in the given prefix
 	KillPrefix(prefixPath string) error
 
-	// WaitPrefix blocks until the wineserver for the given prefix exits
-	WaitPrefix(prefixPath string) error
-
-	// GracefulKillPrefix attempts a graceful stop (SIGTERM), waits up to timeout,
-	// then force kills (SIGKILL) any remaining processes in the prefix. It returns
-	// an error if wine processes are still alive afterwards.
+	// GracefulKillPrefix stops everything running in the prefix, waits up to
+	// timeout for the wineserver to exit before force killing it, and sweeps
+	// processes left without a wineserver. It returns an error if wine processes
+	// are still alive afterwards.
 	GracefulKillPrefix(prefixPath string, timeout time.Duration) error
 
 	// KillOrphans kills every process belonging to the given prefix, including
