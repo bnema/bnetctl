@@ -47,7 +47,7 @@ func runKill(cmd *cobra.Command, args []string) error {
 
 	fmt.Println("Stopping Battle.net and Wine processes...")
 	result, err := runtime.GracefulKillPrefix(cfg.PrefixDir, killTimeout)
-	printStopResult(result)
+	printStopResult(result, err == nil)
 	if err != nil {
 		log.Error("kill failed", "error", err)
 		fmt.Fprintln(os.Stderr, styles.Error.Render("Kill incomplete: ")+err.Error())
@@ -60,15 +60,16 @@ func runKill(cmd *cobra.Command, args []string) error {
 }
 
 // printStopResult reports what the stop terminated, so a kill that found nothing
-// running is not mistaken for a shutdown that did something.
-func printStopResult(result domain.StopResult) {
+// running is not mistaken for a shutdown that did something. verified is false when
+// the stop could not be confirmed, in which case nothing positive is claimed.
+func printStopResult(result domain.StopResult, verified bool) {
 	if result.WineserverStopped {
 		fmt.Println("  " + styles.Muted.Render("stopped the wineserver"))
 	}
 	for _, process := range result.Leftovers {
 		fmt.Println("  " + styles.Muted.Render("killed leftover "+process.String()))
 	}
-	if !result.WineserverStopped && len(result.Leftovers) == 0 {
+	if verified && !result.WineserverStopped && len(result.Leftovers) == 0 {
 		fmt.Println("  " + styles.Muted.Render("nothing was running"))
 	}
 }

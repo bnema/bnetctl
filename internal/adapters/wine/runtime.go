@@ -276,6 +276,9 @@ func (a *Adapter) KillPrefix(prefixPath string) error {
 // battleNetProcessName is the executable that taskkill targets.
 const battleNetProcessName = "Battle.net.exe"
 
+// wineServerProcessName is the process name of the wineserver binary.
+const wineServerProcessName = "wineserver"
+
 // battleNetCloseWait is how long Battle.net is given to persist its session after
 // it has been asked to close. A variable so tests can shorten it.
 var battleNetCloseWait = 5 * time.Second
@@ -382,15 +385,25 @@ func (a *Adapter) GracefulKillPrefix(prefixPath string, timeout time.Duration) (
 
 	result.Leftovers = a.KillOrphans(prefixPath)
 	if len(result.Leftovers) > 0 {
-		log.Info("killed leftover wine processes", "count", len(result.Leftovers), "processes", stoppedNames(result.Leftovers))
+		log.Info("killed leftover wine processes", "count", len(result.Leftovers), "processes", joinProcesses(result.Leftovers))
 	}
 
 	remaining, err := a.waitForPrefixExit(prefixPath)
 	if err != nil {
 		return result, errors.Join(forceErr, fmt.Errorf("verify that %s is stopped: %w", pfxDir, err))
 	}
+
+	// A survivor makes the stop incomplete, so drop it from what is reported as
+	// stopped, and stop claiming the wineserver is gone when it is one of them.
+	// A process can accept SIGKILL and still not die (hung I/O), and a wineserver
+	// can survive both -k and -k9.
+	result.Leftovers = withoutSurvivors(result.Leftovers, remaining)
+	if containsWineserver(remaining) {
+		result.WineserverStopped = false
+	}
+
 	if len(remaining) > 0 {
-		err := fmt.Errorf("%d wine process(es) still running in %s: %s", len(remaining), pfxDir, stoppedNames(processNames(remaining)))
+		err := fmt.Errorf("%d wine process(es) still running in %s: %s", len(remaining), pfxDir, joinProcesses(remaining))
 		return result, errors.Join(forceErr, err)
 	}
 
@@ -398,13 +411,43 @@ func (a *Adapter) GracefulKillPrefix(prefixPath string, timeout time.Duration) (
 	return result, nil
 }
 
-// stoppedNames joins the names of given processes for display.
-func stoppedNames(processes []domain.StoppedProcess) string {
+// joinProcesses formats processes for display.
+func joinProcesses(processes []domain.StoppedProcess) string {
 	names := make([]string, 0, len(processes))
 	for _, process := range processes {
-		names = append(names, process.Name)
+		names = append(names, process.String())
 	}
 	return strings.Join(names, ", ")
+}
+
+// withoutSurvivors keeps the processes that are really gone.
+func withoutSurvivors(reported, survivors []domain.StoppedProcess) []domain.StoppedProcess {
+	if len(survivors) == 0 {
+		return reported
+	}
+
+	alive := make(map[int]bool, len(survivors))
+	for _, process := range survivors {
+		alive[process.PID] = true
+	}
+
+	kept := make([]domain.StoppedProcess, 0, len(reported))
+	for _, process := range reported {
+		if !alive[process.PID] {
+			kept = append(kept, process)
+		}
+	}
+	return kept
+}
+
+// containsWineserver reports whether the prefix's wineserver is still running.
+func containsWineserver(processes []domain.StoppedProcess) bool {
+	for _, process := range processes {
+		if process.Name == wineServerProcessName {
+			return true
+		}
+	}
+	return false
 }
 
 // processNames converts scanned processes into the processes a caller reports.
@@ -461,7 +504,7 @@ func (a *Adapter) forceKillPrefix(prefixPath string) error {
 
 // waitForPrefixExit returns the prefix processes that survived SIGKILL. It waits
 // briefly, because a killed process can stay visible for a moment.
-func (a *Adapter) waitForPrefixExit(prefixPath string) ([]prefixProcess, error) {
+func (a *Adapter) waitForPrefixExit(prefixPath string) ([]domain.StoppedProcess, error) {
 	pfxDir := filepath.Join(prefixPath, "pfx")
 	deadline := time.Now().Add(prefixExitWait)
 
@@ -471,7 +514,7 @@ func (a *Adapter) waitForPrefixExit(prefixPath string) ([]prefixProcess, error) 
 			return nil, err
 		}
 		if len(remaining) == 0 || !time.Now().Before(deadline) {
-			return remaining, nil
+			return processNames(remaining), nil
 		}
 		time.Sleep(prefixExitPoll)
 	}

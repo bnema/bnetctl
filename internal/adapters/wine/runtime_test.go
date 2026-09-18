@@ -299,6 +299,30 @@ func requireNothingStopped(t *testing.T, result domain.StopResult) {
 	}
 }
 
+// TestWithoutSurvivors guards the report: a process that accepted SIGKILL but is
+// still running must never be listed as stopped.
+func TestWithoutSurvivors(t *testing.T) {
+	reported := []domain.StoppedProcess{{PID: 1, Name: "explorer.exe"}, {PID: 2, Name: "services.exe"}}
+
+	kept := withoutSurvivors(reported, []domain.StoppedProcess{{PID: 2, Name: "services.exe"}})
+	if len(kept) != 1 || kept[0].PID != 1 {
+		t.Fatalf("expected only pid 1 to be reported, got %+v", kept)
+	}
+	if got := withoutSurvivors(reported, nil); len(got) != 2 {
+		t.Fatalf("expected both processes to be reported, got %+v", got)
+	}
+	if got := withoutSurvivors(nil, reported); len(got) != 0 {
+		t.Fatalf("expected nothing to be reported, got %+v", got)
+	}
+
+	if !containsWineserver([]domain.StoppedProcess{{PID: 3, Name: wineServerProcessName}}) {
+		t.Fatal("a surviving wineserver must be detected")
+	}
+	if containsWineserver(kept) {
+		t.Fatalf("no wineserver survived, got %+v", kept)
+	}
+}
+
 // waitForExit fails the test unless the process exits on its own.
 func waitForExit(t *testing.T, cmd *exec.Cmd) {
 	t.Helper()
