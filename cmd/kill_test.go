@@ -36,6 +36,13 @@ func TestPrintStopResult(t *testing.T) {
 			absent: []string{"nothing was running"},
 		},
 		{
+			name:     "wineserver without an observed process",
+			result:   domain.StopResult{Wineserver: &domain.StoppedProcess{Name: "wineserver"}},
+			verified: true,
+			want:     []string{"stopped wineserver"},
+			absent:   []string{"pid 0", "nothing was running"},
+		},
+		{
 			name:     "single client",
 			result:   domain.StopResult{Session: domain.StoppedProcesses{{PID: 7, Name: "notepad.exe"}}},
 			verified: true,

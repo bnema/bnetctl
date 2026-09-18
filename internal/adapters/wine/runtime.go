@@ -370,7 +370,10 @@ func (a *Adapter) GracefulKillPrefix(prefixPath string, timeout time.Duration) (
 
 	// Snapshot what is still running: the wineserver terminates its own clients, so
 	// they cannot be listed after the stop.
-	if session, err := prefixProcesses(pfxDir, ""); err == nil {
+	session, snapshotErr := prefixProcesses(pfxDir, "")
+	if snapshotErr != nil {
+		log.Warn("cannot list the wine session before stopping it", "prefix", pfxDir, "error", snapshotErr)
+	} else {
 		result.Session, result.Wineserver = splitWineserver(processNames(session))
 	}
 
@@ -380,10 +383,17 @@ func (a *Adapter) GracefulKillPrefix(prefixPath string, timeout time.Duration) (
 	if err := a.stopWineserver(prefixPath); err != nil {
 		log.Debug("wineserver not stopped", "prefix", pfxDir, "error", err)
 		result.Wineserver = nil
-	} else if err := a.waitForWineserver(prefixPath, timeout); err != nil {
-		log.Warn("wineserver did not exit, force killing", "error", err)
-		if forceErr = a.forceKillPrefix(prefixPath); forceErr != nil {
-			log.Warn("force killing the wineserver failed", "error", forceErr)
+	} else {
+		if result.Wineserver == nil {
+			// The wineserver answered, so one was running even when the snapshot
+			// missed it: report the stop instead of claiming nothing was running.
+			result.Wineserver = &domain.StoppedProcess{Name: wineServerProcessName}
+		}
+		if err := a.waitForWineserver(prefixPath, timeout); err != nil {
+			log.Warn("wineserver did not exit, force killing", "error", err)
+			if forceErr = a.forceKillPrefix(prefixPath); forceErr != nil {
+				log.Warn("force killing the wineserver failed", "error", forceErr)
+			}
 		}
 	}
 
@@ -403,8 +413,12 @@ func (a *Adapter) GracefulKillPrefix(prefixPath string, timeout time.Duration) (
 	survivors := pidSet(remaining)
 	result.Session = excluding(result.Session, survivors)
 	result.Leftovers = excluding(result.Leftovers, survivors)
-	// The sweep catches leftovers the snapshot also saw; report each process once.
+	// The sweep catches leftovers the snapshot also saw; report each process once,
+	// and let the sweep report a wineserver it had to SIGKILL after the stop.
 	result.Session = excluding(result.Session, pidSet(result.Leftovers))
+	if result.Wineserver != nil && pidSet(result.Leftovers)[result.Wineserver.PID] {
+		result.Wineserver = nil
+	}
 	if result.Wineserver != nil && survivors[result.Wineserver.PID] {
 		result.Wineserver = nil
 	}
@@ -419,16 +433,16 @@ func (a *Adapter) GracefulKillPrefix(prefixPath string, timeout time.Duration) (
 }
 
 // splitWineserver separates the wineserver from the rest of a process list.
-func splitWineserver(processes domain.StoppedProcesses) (clients domain.StoppedProcesses, server *domain.StoppedProcess) {
-	clients = make(domain.StoppedProcesses, 0, len(processes))
+func splitWineserver(processes domain.StoppedProcesses) (session domain.StoppedProcesses, server *domain.StoppedProcess) {
+	session = make(domain.StoppedProcesses, 0, len(processes))
 	for _, process := range processes {
 		if process.Name == wineServerProcessName {
 			server = &process
 			continue
 		}
-		clients = append(clients, process)
+		session = append(session, process)
 	}
-	return clients, server
+	return session, server
 }
 
 // pidSet indexes processes by pid.

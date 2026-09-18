@@ -46,7 +46,11 @@ type StoppedProcess struct {
 }
 
 // String formats the process for display, for example "explorer.exe (pid 1234)".
+// A process whose pid is unknown (0) is formatted by name only.
 func (p StoppedProcess) String() string {
+	if p.PID == 0 {
+		return p.Name
+	}
 	return fmt.Sprintf("%s (pid %d)", p.Name, p.PID)
 }
 
@@ -64,7 +68,8 @@ func (p StoppedProcesses) String() string {
 
 // StopResult reports what stopping a prefix terminated.
 type StopResult struct {
-	// Wineserver is the wineserver that was stopped, nil when none was running
+	// Wineserver is the wineserver that was stopped, nil when none was running. Its
+	// pid is unknown (0) when the stop could not observe the process.
 	Wineserver *StoppedProcess
 	// Session lists the wine processes the wineserver was holding when the stop
 	// started. The wineserver terminates them itself, so they cannot be observed

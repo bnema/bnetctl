@@ -86,8 +86,9 @@ func TestResolveBinariesUsesOverrideDirectory(t *testing.T) {
 // fakeWineBinaries writes stub wine/wineboot/wineserver scripts that append their
 // arguments to an invocation log, and points the adapter at them. The wineserver
 // stub exits with wineserverExit, which is 1 when no wineserver is running for the
-// prefix. It returns the path of that log.
-func fakeWineBinaries(t *testing.T, wineserverExit int) string {
+// prefix, and runs wineserverExtra before exiting, so a test can emulate a
+// wineserver taking its clients down. It returns the path of that log.
+func fakeWineBinaries(t *testing.T, wineserverExit int, wineserverExtra string) string {
 	t.Helper()
 
 	dir := t.TempDir()
@@ -104,6 +105,7 @@ func fakeWineBinaries(t *testing.T, wineserverExit int) string {
 	wineserver := filepath.Join(dir, "wineserver")
 	serverScript := "#!/bin/sh\n" +
 		"printf 'wineserver %s\\n' \"$*\" >> '" + logPath + "'\n" +
+		wineserverExtra +
 		fmt.Sprintf("exit %d\n", wineserverExit)
 	if err := os.WriteFile(wineserver, []byte(serverScript), 0o755); err != nil {
 		t.Fatal(err)
@@ -121,18 +123,16 @@ func fakeWineBinaries(t *testing.T, wineserverExit int) string {
 // Killing it outright leaves no chance to save the session, and the next start
 // then needs an interactive login, which does not complete under Wine Wayland.
 func TestGracefulKillAsksBattleNetToCloseFirst(t *testing.T) {
-	logPath := fakeWineBinaries(t, 0)
+	logPath := fakeWineBinaries(t, 0, "")
 
 	oldWait := battleNetCloseWait
 	battleNetCloseWait = 0
 	t.Cleanup(func() { battleNetCloseWait = oldWait })
 
 	adapter := NewAdapter(log.New(io.Discard))
-	result, err := adapter.GracefulKillPrefix(t.TempDir(), time.Second)
-	if err != nil {
+	if _, err := adapter.GracefulKillPrefix(t.TempDir(), time.Second); err != nil {
 		t.Fatalf("GracefulKillPrefix: %v", err)
 	}
-	requireNothingStopped(t, result)
 
 	got, err := os.ReadFile(logPath)
 	if err != nil {
@@ -159,7 +159,7 @@ func TestGracefulKillAsksBattleNetToCloseFirst(t *testing.T) {
 func TestGracefulKillReapsLeftoversWithoutWineserver(t *testing.T) {
 	// wineserver exits 1 on every call, which is what wine reports when the prefix
 	// has no server left.
-	fakeWineBinaries(t, 1)
+	fakeWineBinaries(t, 1, "")
 
 	prefixPath := t.TempDir()
 	leftover := startFakeWineProcess(t, "sleep", "WINEPREFIX="+winePrefixPath(prefixPath), "WINESERVERSOCKET=/tmp/server.sock")
@@ -178,7 +178,7 @@ func TestGracefulKillReapsLeftoversWithoutWineserver(t *testing.T) {
 // scan: wine names Windows processes after the executable it runs, and the name
 // alone must be enough to recognize them.
 func TestGracefulKillReapsWindowsNamedLeftovers(t *testing.T) {
-	fakeWineBinaries(t, 1)
+	fakeWineBinaries(t, 1, "")
 
 	prefixPath := t.TempDir()
 	leftover := startFakeWineProcess(t, "leftover.exe", "WINEPREFIX="+winePrefixPath(prefixPath))
@@ -197,7 +197,7 @@ func TestGracefulKillReapsWindowsNamedLeftovers(t *testing.T) {
 // inherits WINEPREFIX, for example a terminal or editor started from a shell with
 // WINEPREFIX exported.
 func TestGracefulKillLeavesForeignProcessesAlone(t *testing.T) {
-	fakeWineBinaries(t, 1)
+	fakeWineBinaries(t, 1, "")
 
 	prefixPath := t.TempDir()
 	foreign := startFakeWineProcess(t, "sleep", "WINEPREFIX="+winePrefixPath(prefixPath))
@@ -215,7 +215,7 @@ func TestGracefulKillLeavesForeignProcessesAlone(t *testing.T) {
 // TestGracefulKillLeavesNeighbouringPrefixesAlone guards the exact environment
 // match: "WINEPREFIX=<prefix>/pfx-backup" must not be mistaken for the prefix.
 func TestGracefulKillLeavesNeighbouringPrefixesAlone(t *testing.T) {
-	fakeWineBinaries(t, 1)
+	fakeWineBinaries(t, 1, "")
 
 	prefixPath := t.TempDir()
 	neighbour := startFakeWineProcess(t, "leftover.exe", "WINEPREFIX="+winePrefixPath(prefixPath)+"-backup")
@@ -332,6 +332,56 @@ func TestSplitWineserver(t *testing.T) {
 	clients, server = splitWineserver(nil)
 	if server != nil || len(clients) != 0 {
 		t.Fatalf("expected nothing to be split, got %v and %+v", server, clients)
+	}
+}
+
+// TestGracefulKillReportsTheStoppedSession guards the session report end to end: the
+// snapshot taken before the stop names the clients the wineserver takes down, and
+// reports the wineserver itself.
+func TestGracefulKillReportsTheStoppedSession(t *testing.T) {
+	prefixPath := t.TempDir()
+	client := startFakeWineProcess(t, "client.exe", "WINEPREFIX="+winePrefixPath(prefixPath), "WINESERVERSOCKET=/tmp/server.sock")
+	server := startFakeWineProcess(t, "wineserver", "WINEPREFIX="+winePrefixPath(prefixPath))
+
+	// The stub acts as the wineserver would on -k: it takes its clients down with it.
+	stopClients := fmt.Sprintf("if [ \"$1\" = \"-k\" ]; then kill -9 %d %d 2>/dev/null; fi\n", server.Process.Pid, client.Process.Pid)
+	fakeWineBinaries(t, 0, stopClients)
+
+	adapter := NewAdapter(log.New(io.Discard))
+	result, err := adapter.GracefulKillPrefix(prefixPath, time.Second)
+	if err != nil {
+		t.Fatalf("GracefulKillPrefix: %v", err)
+	}
+
+	if result.Wineserver == nil || result.Wineserver.PID != server.Process.Pid {
+		t.Fatalf("expected the wineserver (pid %d), got %+v", server.Process.Pid, result.Wineserver)
+	}
+	if len(result.Session) != 1 || result.Session[0].PID != client.Process.Pid || result.Session[0].Name != "client.exe" {
+		t.Fatalf("expected the client to be reported as stopped, got %+v", result.Session)
+	}
+	if len(result.Leftovers) != 0 {
+		t.Fatalf("nothing survived to the sweep, got %+v", result.Leftovers)
+	}
+}
+
+// TestGracefulKillReportsWineserverWithoutSnapshot guards the report when a
+// wineserver answers but no process of the prefix was observed: the stop still knows
+// a server was running and must not claim nothing was.
+func TestGracefulKillReportsWineserverWithoutSnapshot(t *testing.T) {
+	// -k exits 0, which is what wine reports when a server answered.
+	fakeWineBinaries(t, 0, "")
+
+	adapter := NewAdapter(log.New(io.Discard))
+	result, err := adapter.GracefulKillPrefix(t.TempDir(), time.Second)
+	if err != nil {
+		t.Fatalf("GracefulKillPrefix: %v", err)
+	}
+
+	if result.Wineserver == nil || result.Wineserver.Name != wineServerProcessName {
+		t.Fatalf("expected a wineserver entry, got %+v", result.Wineserver)
+	}
+	if len(result.Session) != 0 || len(result.Leftovers) != 0 {
+		t.Fatalf("expected nothing else to be reported, got %+v", result)
 	}
 }
 
