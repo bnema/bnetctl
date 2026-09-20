@@ -12,8 +12,6 @@ import (
 
 	"github.com/charmbracelet/log"
 
-	"github.com/charmbracelet/log"
-
 	"github.com/bnema/bnetctl/internal/domain"
 )
 
