@@ -31,6 +31,7 @@ go install github.com/bnema/bnetctl@latest
 
 ```bash
 bnetctl install          # Download, create prefix, install Battle.net
+bnetctl install --display-driver x11 # Install through X11/XWayland
 bnetctl launch           # Start Battle.net using native Wayland
 bnetctl launch --display-driver x11 # Start through X11/XWayland
 bnetctl desktop add      # Create Wayland and X11 menu entries
@@ -46,7 +47,7 @@ bnetctl clean -a         # Full purge (cache, prefix, desktop entry, data)
 - Uses `/opt/wine-cachyos/bin/wine` by default, or `BNETCTL_WINE` when set
 - Creates a Wine prefix with DXVK + VKD3D-proton auto-installed
 - Downloads and runs the official Battle.net installer
-- Uses native Wayland by default, with `--display-driver x11` available for XWayland
+- Uses native Wayland by default for both `install` and `launch`, with `--display-driver x11` available for XWayland
 - Sets up NTSync (auto-detected), esync/fsync, GPU-specific env vars
 - Disables Wine systray (orphan floating window on Wayland tiling WMs)
 - Extracts the Battle.net icon and creates separate Wayland and X11 desktop entries

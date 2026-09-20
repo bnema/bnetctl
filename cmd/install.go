@@ -18,14 +18,19 @@ import (
 	"github.com/bnema/bnetctl/internal/ui/styles"
 )
 
-var installCmd = &cobra.Command{
-	Use:     "install",
-	Aliases: []string{"i"},
-	Short:   "Download and install Battle.net",
-	RunE:    runInstall,
-}
+var (
+	installDisplayDriver string
+
+	installCmd = &cobra.Command{
+		Use:     "install",
+		Aliases: []string{"i"},
+		Short:   "Download and install Battle.net",
+		RunE:    runInstall,
+	}
+)
 
 func init() {
+	registerDisplayDriverFlag(installCmd, &installDisplayDriver)
 	rootCmd.AddCommand(installCmd)
 }
 
@@ -37,21 +42,27 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	runtime := wine.NewAdapter(log)
-	downloader := http.NewDownloader()
 	fs := xdg.NewFilesystem()
 
-	installer := services.NewInstallerService(runtime, downloader, fs, cfg, func() *domain.WineEnv {
-		return env.BuildGPUEnvForDisplay(env.DisplayDriverWayland)
-	}, log)
-
-	// Check if already installed
-	inst := installer.GetInstallation()
-	if inst.Installed {
-		log.Info("battle.net already installed", "prefix", inst.PrefixPath)
+	// Check before resolving the display driver: a no-op install must still
+	// succeed when the requested display server is unavailable.
+	if services.IsInstalled(fs, cfg) {
+		log.Info("battle.net already installed", "prefix", cfg.PrefixDir)
 		fmt.Println(styles.Warning.Render("Battle.net is already installed."))
 		return nil
 	}
+
+	driver, err := resolveDisplayDriver(installDisplayDriver)
+	if err != nil {
+		return err
+	}
+
+	runtime := wine.NewAdapter(log)
+	downloader := http.NewDownloader()
+
+	installer := services.NewInstallerService(runtime, downloader, fs, cfg, func() *domain.WineEnv {
+		return env.BuildGPUEnvForDisplay(driver)
+	}, log, env.BattleNetArgsForDisplay(driver)...)
 
 	log.Info("starting installation")
 

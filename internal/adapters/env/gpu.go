@@ -67,10 +67,11 @@ func BuildGPUEnv() *domain.WineEnv {
 	return BuildGPUEnvForDisplay(DisplayDriverWayland)
 }
 
-// BattleNetArgsForDisplay returns launcher-only compatibility arguments.
-// Wine Wayland cannot render CEF's cross-process Vulkan surface, so keep GPU
-// rendering in Battle.net's window-owning process. The argument is not inherited
-// through the environment, leaving games free to use their normal GPU setup.
+// BattleNetArgsForDisplay returns the compatibility arguments applied to the
+// Battle.net launcher and its setup executable. Wine Wayland cannot render CEF's
+// cross-process Vulkan surface, so keep GPU rendering in Battle.net's
+// window-owning process. The argument is never inherited through the environment,
+// leaving games free to use their normal GPU setup.
 func BattleNetArgsForDisplay(driver DisplayDriver) []string {
 	if driver == DisplayDriverWayland {
 		return []string{BattleNetInProcessGPUArg}

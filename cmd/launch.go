@@ -24,22 +24,16 @@ var launchCmd = &cobra.Command{
 }
 
 func init() {
-	launchCmd.Flags().StringVar(&displayDriver, "display-driver", string(env.DisplayDriverWayland), "Wine display driver: wayland or x11")
+	registerDisplayDriverFlag(launchCmd, &displayDriver)
 	rootCmd.AddCommand(launchCmd)
 }
 
 func runLaunch(cmd *cobra.Command, args []string) error {
 	log := getLogger()
 
-	driver := env.DisplayDriver(displayDriver)
-	if driver != env.DisplayDriverWayland && driver != env.DisplayDriverX11 {
-		return fmt.Errorf("invalid display driver %q: use wayland or x11", displayDriver)
-	}
-	if driver == env.DisplayDriverWayland && !env.IsWayland() {
-		return fmt.Errorf("wayland display unavailable: WAYLAND_DISPLAY is not set")
-	}
-	if driver == env.DisplayDriverX11 && os.Getenv("DISPLAY") == "" {
-		return fmt.Errorf("x11 display unavailable: DISPLAY is not set")
+	driver, err := resolveDisplayDriver(displayDriver)
+	if err != nil {
+		return err
 	}
 
 	cfg, err := xdg.DefaultConfig()
