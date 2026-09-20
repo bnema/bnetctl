@@ -148,7 +148,7 @@ func (a *Adapter) CreatePrefix(prefixPath string) error {
 	// Disable Wine's systray window (tiled as a full-size empty column on
 	// Wayland compositors) before the prefix is used.
 	log.Debug("disabling wine systray")
-	if err := a.DisableSystray(prefixPath); err != nil {
+	if err := a.DisableSystray(prefixPath, nil); err != nil {
 		log.Warn("failed to disable systray (non-fatal)", "error", err)
 	}
 	// Wait for wineserver after reg edit
@@ -166,14 +166,14 @@ func (a *Adapter) CreatePrefix(prefixPath string) error {
 // REG_DWORD). On tiling compositors it is tiled as a full-size empty column, so
 // it must be disabled before the application starts - not only when the prefix
 // is first created.
-func (a *Adapter) DisableSystray(prefixPath string) error {
+func (a *Adapter) DisableSystray(prefixPath string, wineEnv *domain.WineEnv) error {
 	rt, err := a.Detect()
 	if err != nil {
 		return err
 	}
 
 	pfxDir := filepath.Join(prefixPath, "pfx")
-	env := a.buildEnv(pfxDir, nil)
+	env := a.buildEnv(pfxDir, wineEnv)
 	env["WINEDEBUG"] = "-all"
 
 	cmd := exec.Command(rt.WineBin, "reg", "add",

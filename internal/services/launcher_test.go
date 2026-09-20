@@ -16,7 +16,9 @@ import (
 // The embedded interface panics if an unexpected method is called.
 type fakeRuntime struct {
 	ports.RuntimePort
-	order []string
+	order             []string
+	disableSystrayEnv *domain.WineEnv
+	runExeEnv         *domain.WineEnv
 }
 
 func (f *fakeRuntime) Detect() (*domain.WineRuntime, error) {
@@ -25,13 +27,15 @@ func (f *fakeRuntime) Detect() (*domain.WineRuntime, error) {
 
 func (f *fakeRuntime) IsProcessRunning(string) bool { return false }
 
-func (f *fakeRuntime) DisableSystray(string) error {
+func (f *fakeRuntime) DisableSystray(_ string, env *domain.WineEnv) error {
 	f.order = append(f.order, "disable-systray")
+	f.disableSystrayEnv = env
 	return nil
 }
 
-func (f *fakeRuntime) RunExeAsync(string, string, *domain.WineEnv, ...string) (<-chan error, error) {
+func (f *fakeRuntime) RunExeAsync(_ string, _ string, env *domain.WineEnv, _ ...string) (<-chan error, error) {
 	f.order = append(f.order, "run-exe")
+	f.runExeEnv = env
 	done := make(chan error, 1)
 	done <- nil
 	return done, nil
@@ -76,5 +80,8 @@ func TestLaunchDisablesSystrayBeforeStartingBattleNet(t *testing.T) {
 		if runtime.order[i] != want[i] {
 			t.Fatalf("expected calls %v, got %v", want, runtime.order)
 		}
+	}
+	if runtime.disableSystrayEnv != runtime.runExeEnv {
+		t.Fatal("DisableSystray and RunExeAsync received different Wine environments")
 	}
 }
