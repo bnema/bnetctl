@@ -91,7 +91,7 @@ func (s *LaunchService) Launch() (*LaunchResult, error) {
 	// never received it, so apply it on every launch, before Battle.net
 	// registers its tray icon.
 	log.Debug("disabling wine systray")
-	if err := s.runtime.DisableSystray(s.cfg.PrefixDir); err != nil {
+	if err := s.runtime.DisableSystray(s.cfg.PrefixDir, env); err != nil {
 		log.Warn("failed to disable wine systray (non-fatal)", "error", err)
 	}
 
