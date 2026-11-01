@@ -73,12 +73,33 @@ always wins, e.g. `BNETCTL_WINE=/usr/bin/wine`; companion `wineboot` and
 `wineserver` must be beside its resolved binary.
 
 On the first launch of an existing prefix without a version marker, or after a
-Wine version change, bnetctl runs `wineboot -u`, waits for Wine to exit, and
-reinstalls DXVK/vkd3d-proton symlinks and native overrides. Both `setup_dxvk` and
-`setup_vkd3d_proton` must be on PATH for upgrades. The marker
-`~/.local/share/bnetctl/prefix/wine-version` is written only after success;
-failures stop launch and retry on the next attempt. Close Battle.net and all
-its games before switching Wine versions. The first update may take longer.
+Wine version change, bnetctl runs `wineboot -u -r`, waits for Wine to exit, and
+directly reinstalls and verifies DXVK/vkd3d-proton DLL symlinks and `native`
+overrides. No setup scripts are executed. Package data is found beside the
+resolved setup scripts, falling back to `/usr/share/dxvk` and
+`/usr/share/vkd3d-proton` (including Arch's vkd3d wrapper).
+
+**Maintenance limitation:** `-r` skips Run keys and Startup, but Wine still
+processes RunServicesOnce and HKLM RunOnce (`programs/wineboot/wineboot.c`,
+lines 1931 and 1945; Run/Startup are gated at 1947–1952). Before maintenance,
+bnetctl reads `pfx/system.reg` and `pfx/user.reg` and refuses if RunOnce or
+RunServicesOnce, including Wow6432Node variants, contains any values. The error
+lists the entries. bnetctl never deletes or disables these registry values.
+Resolve pending one-time startup tasks yourself before retrying maintenance.
+
+The `prefix/wine-version` marker is committed only after verification. A
+`prefix/wine-version.migrating` record is written before updating; failures
+retain it and force a retry, even if the committed version already matches.
+Both records establish a minimum Wine version: X11 and Wayland will use an
+available runtime at least that new, or refuse. An older explicit `BNETCTL_WINE`
+is rejected rather than silently overridden. Switching display modes never
+downgrades a tracked prefix. Version probes (`wine --version`) may run during
+selection; downgrade refusals run no prefix Wine commands.
+
+An exclusive `prefix/.bnetctl.lock` protects selection and maintenance until the
+application process starts; concurrent invocations fail immediately. Close
+Battle.net and all its games before switching Wine versions. The first update
+may take longer. The default prefix is `~/.local/share/bnetctl/prefix`.
 
 Use `bnetctl --verbose launch --display-driver wayland` to see the selected Wine,
 HDR policy, and any one-time prefix update on stderr. Logs are always saved to
