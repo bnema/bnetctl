@@ -53,7 +53,11 @@ func runLaunch(cmd *cobra.Command, args []string) error {
 
 	launcher := services.NewLaunchService(runtime, fs, cfg, func() *domain.WineEnv {
 		enabled, reason := env.HDRStatus(driver, noHDR)
-		log.Info("hdr env", "enabled", enabled, "reason", reason)
+		if reason == "wayland default" {
+			log.Info("hdr env", "enabled", enabled, "reason", reason, "scope", "WoW executables")
+		} else {
+			log.Info("hdr env", "enabled", enabled, "reason", reason)
+		}
 		return env.BuildGPUEnvForDisplayHDR(driver, noHDR)
 	}, log, env.BattleNetArgsForDisplay(driver)...)
 

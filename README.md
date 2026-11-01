@@ -54,17 +54,25 @@ bnetctl clean -a         # Full purge (cache, prefix, desktop entry, data)
 
 ## HDR on Wayland
 
-HDR is enabled automatically for native Wayland (`DXVK_HDR=1`). It requires
-**Wine >= 11.19**, an HDR-capable compositor with HDR enabled, and an HDR-capable
-monitor/game. An existing `DXVK_HDR` environment variable is respected, including
-an empty value. To disable HDR explicitly (also overriding `DXVK_HDR=1`):
+HDR is enabled automatically for native Wayland only for `WowClassic.exe`,
+`Wow.exe`, `WowClassicT.exe`, and `WowT.exe`, using per-executable
+`dxgi.enableHDR = True` sections in `DXVK_CONFIG`. This avoids exposing HDR to
+Battle.net's Chromium/CEF launcher. It requires **Wine >= 11.19**, an HDR-capable
+compositor with HDR enabled, and an HDR-capable monitor/game.
+
+An existing `DXVK_HDR` environment variable is respected, including an empty
+value; when it is set, no automatic config is added. Otherwise, the WoW sections
+are appended after any existing `DXVK_CONFIG` lines, preserving their scope.
+To skip automatic HDR entries and unset inherited `DXVK_HDR` (user-provided
+`DXVK_CONFIG` is left untouched):
 
 ```bash
 bnetctl launch --no-hdr
 ```
 
-X11 mode does not set `DXVK_HDR`. Games started by Battle.net inherit its HDR
-policy; enable HDR in the game's own settings too.
+X11 mode leaves the user's HDR environment untouched. Games started by
+Battle.net inherit its per-executable config; enable HDR in the game's own
+settings too.
 
 For Wayland `install` and `launch`, bnetctl prefers CachyOS Wine when it meets the
 minimum, otherwise qualifying `wine` on PATH. If neither qualifies, it retains

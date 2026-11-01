@@ -92,6 +92,10 @@ func BuildGPUEnvForDisplay(driver DisplayDriver) *domain.WineEnv {
 	return BuildGPUEnvForDisplayHDR(driver, false)
 }
 
+// wowHDRConfig uses DXVK's semicolon-separated config lines. Each section
+// matches an exact executable name, keeping HDR away from Battle.net's CEF.
+const wowHDRConfig = "[WowClassic.exe];dxgi.enableHDR = True;[Wow.exe];dxgi.enableHDR = True;[WowClassicT.exe];dxgi.enableHDR = True;[WowT.exe];dxgi.enableHDR = True"
+
 // BuildGPUEnvForDisplayHDR applies the launch HDR policy.
 func BuildGPUEnvForDisplayHDR(driver DisplayDriver, noHDR bool) *domain.WineEnv {
 	env := &domain.WineEnv{
@@ -116,9 +120,13 @@ func BuildGPUEnvForDisplayHDR(driver DisplayDriver, noHDR bool) *domain.WineEnv 
 		// Without an X11 display, Wine selects its native Wayland driver.
 		env.Unset = append(env.Unset, "DISPLAY")
 		if noHDR {
-			env.Vars["DXVK_HDR"] = "0"
+			env.Unset = append(env.Unset, "DXVK_HDR")
 		} else if _, set := os.LookupEnv("DXVK_HDR"); !set {
-			env.Vars["DXVK_HDR"] = "1"
+			config := os.Getenv("DXVK_CONFIG")
+			if config != "" {
+				config += ";"
+			}
+			env.Vars["DXVK_CONFIG"] = config + wowHDRConfig
 		}
 	}
 
