@@ -149,6 +149,9 @@ func BuildGPUEnvForDisplayHDR(driver DisplayDriver, noHDR bool) *domain.WineEnv 
 // HDRStatus explains the effective HDR launch policy for logging.
 func HDRStatus(driver DisplayDriver, noHDR bool) (bool, string) {
 	if driver == DisplayDriverX11 {
+		if value, set := os.LookupEnv("DXVK_HDR"); set {
+			return value == "1", "user env"
+		}
 		return false, "x11"
 	}
 	if noHDR {

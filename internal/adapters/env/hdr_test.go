@@ -20,6 +20,10 @@ func TestHDRPolicy(t *testing.T) {
 		{"user empty", DisplayDriverWayland, false, str(""), "", "user DXVK_HDR=", false},
 		{"opt out", DisplayDriverWayland, true, str("1"), "0", "--no-hdr", false},
 		{"x11", DisplayDriverX11, false, nil, "", "x11", false},
+		{"x11 inherited on", DisplayDriverX11, false, str("1"), "", "user env", true},
+		{"x11 inherited off", DisplayDriverX11, false, str("0"), "", "user env", false},
+		{"x11 inherited empty", DisplayDriverX11, false, str(""), "", "user env", false},
+		{"x11 ignores opt out", DisplayDriverX11, true, str("1"), "", "user env", true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("DXVK_HDR", "")
