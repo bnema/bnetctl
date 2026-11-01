@@ -52,19 +52,37 @@ bnetctl clean -a         # Full purge (cache, prefix, desktop entry, data)
 - Extracts the Battle.net icon and creates separate Wayland and X11 desktop entries
 - Graceful process management with orphan cleanup
 
-## Wine selection on Wayland
+## HDR on Wayland
 
-Native Wayland HDR requires Wine >= 11.19 and an HDR-capable compositor.
-For `install` and `launch`, bnetctl prefers CachyOS Wine when it meets that
-minimum, otherwise a sufficiently recent `wine` on PATH. If neither qualifies,
-it keeps the usual preference and logs a warning. X11 selection is unchanged.
-`BNETCTL_WINE=/usr/bin/wine` explicitly selects an installation; `wineboot` and
-`wineserver` must be beside its resolved Wine binary. The selected path and
-version are logged once per launch.
+HDR is enabled automatically for native Wayland (`DXVK_HDR=1`). It requires
+**Wine >= 11.19**, an HDR-capable compositor with HDR enabled, and an HDR-capable
+monitor/game. An existing `DXVK_HDR` environment variable is respected, including
+an empty value. To disable HDR explicitly (also overriding `DXVK_HDR=1`):
 
-Wine selection alone does not enable HDR: DXVK still needs `DXVK_HDR=1`.
-Automatic HDR environment configuration and managed prefix upgrades are not yet
-implemented. Do not switch a live prefix between Wine installations.
+```bash
+bnetctl launch --no-hdr
+```
+
+X11 mode does not set `DXVK_HDR`. Games started by Battle.net inherit its HDR
+policy; enable HDR in the game's own settings too.
+
+For Wayland `install` and `launch`, bnetctl prefers CachyOS Wine when it meets the
+minimum, otherwise qualifying `wine` on PATH. If neither qualifies, it retains
+the usual preference and warns. X11 selection is unchanged. `BNETCTL_WINE`
+always wins, e.g. `BNETCTL_WINE=/usr/bin/wine`; companion `wineboot` and
+`wineserver` must be beside its resolved binary.
+
+On the first launch of an existing prefix without a version marker, or after a
+Wine version change, bnetctl runs `wineboot -u`, waits for Wine to exit, and
+reinstalls DXVK/vkd3d-proton symlinks and native overrides. Both `setup_dxvk` and
+`setup_vkd3d_proton` must be on PATH for upgrades. The marker
+`~/.local/share/bnetctl/prefix/wine-version` is written only after success;
+failures stop launch and retry on the next attempt. Close Battle.net and all
+its games before switching Wine versions. The first update may take longer.
+
+Use `bnetctl --verbose launch --display-driver wayland` to see the selected Wine,
+HDR policy, and any one-time prefix update on stderr. Logs are always saved to
+`~/.cache/bnetctl/bnetctl.log` (or the corresponding XDG cache directory).
 
 ## Directories
 

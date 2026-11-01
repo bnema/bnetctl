@@ -139,6 +139,9 @@ func (s *InstallerService) Install(progressFn func(InstallProgress)) (*domain.In
 	if s.envFn != nil {
 		wineEnv = s.envFn()
 	}
+	if err := s.runtime.UpdatePrefix(s.cfg.PrefixDir, wineEnv); err != nil {
+		return nil, fmt.Errorf("update Wine prefix: %w", err)
+	}
 	done, err := s.runtime.RunExeAsync(s.cfg.PrefixDir, setupPath, wineEnv, s.exeArgs...)
 	if err != nil {
 		log.Error("start installer failed", "error", err)

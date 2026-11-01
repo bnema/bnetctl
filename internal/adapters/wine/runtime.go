@@ -131,33 +131,11 @@ func (a *Adapter) CreatePrefix(prefixPath string) error {
 		return fmt.Errorf("wineserver -w failed: %w", err)
 	}
 
-	// Auto-install DXVK if setup_dxvk is available
-	log.Debug("dxvk auto-install", "enabled", rt.HasDXVKSetup)
-	if rt.HasDXVKSetup {
-		dxvkCmd := exec.Command(rt.DXVKSetupBin, "install", "--symlink")
-		dxvkCmd.Env = envMapToSlice(env)
-		dxvkCmd.Stdout = os.Stdout
-		dxvkCmd.Stderr = os.Stderr
-		if err := dxvkCmd.Run(); err != nil {
-			// DXVK install failure is non-fatal
-			log.Warn("dxvk setup failed", "error", err)
-			fmt.Fprintf(os.Stderr, "warning: DXVK setup failed (non-fatal): %v\n", err)
-		} else {
-			log.Info("dxvk installed")
-		}
+	if err := a.installGraphics(rt, env); err != nil {
+		return err
 	}
-
-	// Auto-install VKD3D-proton if setup_vkd3d_proton is available
-	if rt.HasVKD3DSetup {
-		log.Info("installing vkd3d-proton", "path", rt.VKD3DSetupBin)
-		vkd3dCmd := exec.Command(rt.VKD3DSetupBin, "install", "--symlink")
-		vkd3dCmd.Env = envMapToSlice(env)
-		vkd3dCmd.Stdout = os.Stdout
-		vkd3dCmd.Stderr = os.Stderr
-		if err := vkd3dCmd.Run(); err != nil {
-			// VKD3D install failure is non-fatal
-			log.Warn("vkd3d-proton setup failed (non-fatal)", "error", err)
-		}
+	if err := writePrefixVersion(prefixPath, rt.Version); err != nil {
+		return err
 	}
 
 	// Disable Wine's systray window (tiled as a full-size empty column on
@@ -256,7 +234,7 @@ func (a *Adapter) RunExeAsync(prefixPath string, exePath string, wineEnv *domain
 func (a *Adapter) IsProcessRunning(prefixPath string) bool {
 	log := a.log
 
-	_, _, wineServerBin, err := resolveBinaries()
+	_, _, wineServerBin, err := a.binaries()
 	if err != nil {
 		return false
 	}
@@ -274,7 +252,7 @@ func (a *Adapter) IsProcessRunning(prefixPath string) bool {
 func (a *Adapter) stopWineserver(prefixPath string) error {
 	log := a.log
 
-	_, _, wineServerBin, err := resolveBinaries()
+	_, _, wineServerBin, err := a.binaries()
 	if err != nil {
 		return err
 	}
@@ -497,7 +475,7 @@ func processNames(processes []prefixProcess) domain.StoppedProcesses {
 // The waiter is killed and reaped once the deadline passes, so it cannot outlive
 // the call, and the wineserver binary is never confused with a leftover to sweep.
 func (a *Adapter) waitForWineserver(prefixPath string, timeout time.Duration) error {
-	_, _, wineServerBin, err := resolveBinaries()
+	_, _, wineServerBin, err := a.binaries()
 	if err != nil {
 		return err
 	}
@@ -521,7 +499,7 @@ func (a *Adapter) waitForWineserver(prefixPath string, timeout time.Duration) er
 
 // forceKillPrefix sends SIGKILL to the prefix's wineserver.
 func (a *Adapter) forceKillPrefix(prefixPath string) error {
-	_, _, wineServerBin, err := resolveBinaries()
+	_, _, wineServerBin, err := a.binaries()
 	if err != nil {
 		return err
 	}
@@ -688,6 +666,13 @@ func (a *Adapter) buildEnv(pfxDir string, wineEnv *domain.WineEnv) map[string]st
 	}
 
 	env["WINEPREFIX"] = pfxDir
+	if a.detected != nil {
+		// Setup scripts must use the selected install too, not a different PATH Wine.
+		env["WINE"] = a.detected.WineBin
+		env["WINELOADER"] = a.detected.WineBin
+		env["WINESERVER"] = a.detected.WineServerBin
+		env["PATH"] = filepath.Dir(a.detected.WineBin) + string(os.PathListSeparator) + env["PATH"]
+	}
 
 	if wineEnv != nil {
 		for _, key := range wineEnv.Unset {
@@ -758,4 +743,11 @@ func envMapToSlice(env map[string]string) []string {
 		result = append(result, k+"="+v)
 	}
 	return result
+}
+
+func (a *Adapter) binaries() (string, string, string, error) {
+	if a.detected != nil {
+		return a.detected.WineBin, a.detected.WineBootBin, a.detected.WineServerBin, nil
+	}
+	return resolveBinariesForWayland(a.wayland)
 }

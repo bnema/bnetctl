@@ -85,3 +85,5 @@ func TestLaunchDisablesSystrayBeforeStartingBattleNet(t *testing.T) {
 		t.Fatal("DisableSystray and RunExeAsync received different Wine environments")
 	}
 }
+
+func (f *fakeRuntime) UpdatePrefix(string, *domain.WineEnv) error { return nil }

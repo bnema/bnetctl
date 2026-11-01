@@ -11,6 +11,9 @@ type RuntimePort interface {
 	// Detect checks if wine-cachyos is available on the system
 	Detect() (*domain.WineRuntime, error)
 
+	// UpdatePrefix updates the prefix and graphics when the selected Wine version changes.
+	UpdatePrefix(prefixPath string, env *domain.WineEnv) error
+
 	// CreatePrefix initializes a new Wine prefix at the given path
 	CreatePrefix(prefixPath string) error
 

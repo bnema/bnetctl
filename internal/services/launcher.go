@@ -80,6 +80,9 @@ func (s *LaunchService) Launch() (*LaunchResult, error) {
 	if s.envFn != nil {
 		env = s.envFn()
 	}
+	if err := s.runtime.UpdatePrefix(s.cfg.PrefixDir, env); err != nil {
+		return nil, fmt.Errorf("update Wine prefix: %w", err)
+	}
 	log.Debug("ensuring battle.net config")
 	if err := EnsureBattleNetConfig(s.cfg.PrefixDir, s.fs, s.log); err != nil {
 		log.Error("ensure battle.net config failed", "error", err)
