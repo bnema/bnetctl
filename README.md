@@ -55,7 +55,8 @@ bnetctl clean -a         # Full purge (cache, prefix, desktop entry, data)
 ## HDR on Wayland
 
 HDR is enabled automatically for native Wayland only for `WowClassic.exe`,
-`Wow.exe`, `WowClassicT.exe`, and `WowT.exe`, using per-executable
+`Wow.exe`, `WoW.exe` (retail), `WowClassicT.exe`, `WowT.exe`, and `WoWT.exe`
+(DXVK matches executable names case-sensitively), using per-executable
 `dxgi.enableHDR = True` sections in `DXVK_CONFIG`. This avoids exposing HDR to
 Battle.net's Chromium/CEF launcher. It requires **Wine >= 11.19**, an HDR-capable
 compositor with HDR enabled, and an HDR-capable monitor/game.

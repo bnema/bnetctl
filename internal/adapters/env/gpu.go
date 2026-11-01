@@ -93,8 +93,9 @@ func BuildGPUEnvForDisplay(driver DisplayDriver) *domain.WineEnv {
 }
 
 // wowHDRConfig uses DXVK's semicolon-separated config lines. Each section
-// matches an exact executable name, keeping HDR away from Battle.net's CEF.
-const wowHDRConfig = "[WowClassic.exe];dxgi.enableHDR = True;[Wow.exe];dxgi.enableHDR = True;[WowClassicT.exe];dxgi.enableHDR = True;[WowT.exe];dxgi.enableHDR = True"
+// matches an exact, case-sensitive executable name, keeping HDR away from
+// Battle.net's CEF. Retail starts as WoW.exe, other clients as Wow*.exe.
+const wowHDRConfig = "[WowClassic.exe];dxgi.enableHDR = True;[Wow.exe];dxgi.enableHDR = True;[WoW.exe];dxgi.enableHDR = True;[WowClassicT.exe];dxgi.enableHDR = True;[WowT.exe];dxgi.enableHDR = True;[WoWT.exe];dxgi.enableHDR = True"
 
 // BuildGPUEnvForDisplayHDR applies the launch HDR policy.
 func BuildGPUEnvForDisplayHDR(driver DisplayDriver, noHDR bool) *domain.WineEnv {

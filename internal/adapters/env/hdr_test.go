@@ -61,7 +61,7 @@ func TestHDRPolicy(t *testing.T) {
 func str(s string) *string { return &s }
 
 func TestHDRPreservesUserConfig(t *testing.T) {
-	const entries = "[WowClassic.exe];dxgi.enableHDR = True;[Wow.exe];dxgi.enableHDR = True;[WowClassicT.exe];dxgi.enableHDR = True;[WowT.exe];dxgi.enableHDR = True"
+	const entries = "[WowClassic.exe];dxgi.enableHDR = True;[Wow.exe];dxgi.enableHDR = True;[WoW.exe];dxgi.enableHDR = True;[WowClassicT.exe];dxgi.enableHDR = True;[WowT.exe];dxgi.enableHDR = True;[WoWT.exe];dxgi.enableHDR = True"
 	for _, userConfig := range []string{"", "dxgi.maxFrameLatency = 1", "[Battle.net.exe];dxgi.enableHDR = False", "[Other.exe];dxgi.syncInterval = 0;"} {
 		t.Run(userConfig, func(t *testing.T) {
 			t.Setenv("DXVK_CONFIG", userConfig)
