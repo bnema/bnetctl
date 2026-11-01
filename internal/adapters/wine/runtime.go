@@ -28,6 +28,7 @@ type Adapter struct {
 	log      *log.Logger
 	wayland  bool
 	detected *domain.WineRuntime
+	minimum  string
 }
 
 var _ ports.RuntimePort = (*Adapter)(nil)
@@ -63,6 +64,17 @@ func (a *Adapter) Detect() (*domain.WineRuntime, error) {
 	version := strings.TrimSpace(string(out))
 	log.Debug("wine version", "version", version)
 
+	if a.minimum != "" {
+		wineBin, version, err = chooseMinimumWine(wineBin, version, a.minimum)
+		if err != nil {
+			return nil, err
+		}
+		wineBootBin, wineServerBin, err = companionBinaries(wineBin)
+		if err != nil {
+			return nil, err
+		}
+		log.Info("preserving prefix Wine minimum", "minimum", a.minimum, "path", wineBin, "version", version)
+	}
 	// Check NTSync availability
 	hasNTSync := false
 	if _, err := os.Stat("/dev/ntsync"); err == nil {
@@ -104,6 +116,9 @@ func (a *Adapter) CreatePrefix(prefixPath string) error {
 		return err
 	}
 
+	if err := writeVersionRecord(prefixPath, prefixVersionFile+".migrating", rt.Version); err != nil {
+		return err
+	}
 	pfxDir := filepath.Join(prefixPath, "pfx")
 	log.Info("creating wine prefix", "path", pfxDir)
 	if err := os.MkdirAll(pfxDir, 0o755); err != nil {
@@ -138,6 +153,9 @@ func (a *Adapter) CreatePrefix(prefixPath string) error {
 		return err
 	}
 
+	if err := os.Remove(filepath.Join(prefixPath, prefixVersionFile+".migrating")); err != nil {
+		return err
+	}
 	// Disable Wine's systray window (tiled as a full-size empty column on
 	// Wayland compositors) before the prefix is used.
 	log.Debug("disabling wine systray")

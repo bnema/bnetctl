@@ -53,6 +53,11 @@ func NewLaunchService(
 func (s *LaunchService) Launch() (*LaunchResult, error) {
 	log := s.log
 
+	release, err := s.runtime.LockPrefix(s.cfg.PrefixDir)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	// Check wine is available
 	log.Debug("checking wine runtime")
 	rt, err := s.runtime.Detect()
@@ -106,6 +111,7 @@ func (s *LaunchService) Launch() (*LaunchResult, error) {
 		return nil, fmt.Errorf("launch Battle.net: %w", err)
 	}
 
+	release()
 	// Trap signals for graceful shutdown
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)

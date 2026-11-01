@@ -49,10 +49,6 @@ func runLaunch(cmd *cobra.Command, args []string) error {
 	}
 	fs := xdg.NewFilesystem()
 
-	// Display the selected Wine version; the adapter retains it for this launch.
-	if rt, err := runtime.Detect(); err == nil {
-		fmt.Println(styles.StepPrefix.Render("Wine: ") + rt.Version)
-	}
 	fmt.Println(styles.StepPrefix.Render("Launching Battle.net..."))
 
 	launcher := services.NewLaunchService(runtime, fs, cfg, func() *domain.WineEnv {

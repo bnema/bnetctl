@@ -87,3 +87,5 @@ func TestLaunchDisablesSystrayBeforeStartingBattleNet(t *testing.T) {
 }
 
 func (f *fakeRuntime) UpdatePrefix(string, *domain.WineEnv) error { return nil }
+
+func (f *fakeRuntime) LockPrefix(string) (func(), error) { return func() {}, nil }

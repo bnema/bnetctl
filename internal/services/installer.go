@@ -83,6 +83,11 @@ func (s *InstallerService) Install(progressFn func(InstallProgress)) (*domain.In
 		}
 	}
 
+	release, err := s.runtime.LockPrefix(s.cfg.PrefixDir)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	// Step 1: Detect runtime
 	log.Debug("detecting wine runtime")
 	rt, err := s.runtime.Detect()
@@ -148,6 +153,7 @@ func (s *InstallerService) Install(progressFn func(InstallProgress)) (*domain.In
 		return nil, fmt.Errorf("start Battle.net installer: %w", err)
 	}
 
+	release()
 	// Step 6: Poll until Battle.net.exe appears or installer process exits
 	exePath := filepath.Join(s.cfg.PrefixDir, "pfx", domain.BattleNetExeRelPath)
 	report(InstallWaitingForClient, "Waiting for Battle.net to install (this may take a few minutes)...")
