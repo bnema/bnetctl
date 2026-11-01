@@ -25,7 +25,9 @@ const (
 
 // Adapter implements ports.RuntimePort using wine-cachyos directly
 type Adapter struct {
-	log *log.Logger
+	log      *log.Logger
+	wayland  bool
+	detected *domain.WineRuntime
 }
 
 var _ ports.RuntimePort = (*Adapter)(nil)
@@ -35,11 +37,19 @@ func NewAdapter(log *log.Logger) *Adapter {
 	return &Adapter{log: log}
 }
 
+// NewWaylandAdapter selects a runtime supporting native Wayland color management.
+func NewWaylandAdapter(log *log.Logger) *Adapter {
+	return &Adapter{log: log, wayland: true}
+}
+
 // Detect checks if wine-cachyos is available and returns runtime info
 func (a *Adapter) Detect() (*domain.WineRuntime, error) {
 	log := a.log
+	if a.detected != nil {
+		return a.detected, nil
+	}
 
-	wineBin, wineBootBin, wineServerBin, err := resolveBinaries()
+	wineBin, wineBootBin, wineServerBin, err := resolveBinariesForWayland(a.wayland)
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +77,11 @@ func (a *Adapter) Detect() (*domain.WineRuntime, error) {
 	// Check VKD3D-proton setup availability
 	vkd3dSetupBin, _ := exec.LookPath("setup_vkd3d_proton")
 
-	return &domain.WineRuntime{
+	if a.wayland && !supportsWaylandHDR(version) {
+		log.Warn(fmt.Sprintf("HDR on Wayland needs Wine >= 11.19 (found %s); set BNETCTL_WINE", version))
+	}
+	log.Info("selected wine runtime", "path", wineBin, "version", version)
+	a.detected = &domain.WineRuntime{
 		WineBin:       wineBin,
 		WineBootBin:   wineBootBin,
 		WineServerBin: wineServerBin,
@@ -77,7 +91,8 @@ func (a *Adapter) Detect() (*domain.WineRuntime, error) {
 		DXVKSetupBin:  dxvkSetupBin,
 		HasVKD3DSetup: vkd3dSetupBin != "",
 		VKD3DSetupBin: vkd3dSetupBin,
-	}, nil
+	}
+	return a.detected, nil
 }
 
 // CreatePrefix initializes a new Wine prefix at the given path
@@ -687,6 +702,10 @@ func (a *Adapter) buildEnv(pfxDir string, wineEnv *domain.WineEnv) map[string]st
 }
 
 func resolveBinaries() (wine, wineboot, wineserver string, err error) {
+	return resolveBinariesForWayland(false)
+}
+
+func resolveBinariesForWayland(wayland bool) (wine, wineboot, wineserver string, err error) {
 	wine = os.Getenv(wineOverrideEnv)
 	if wine == "" {
 		if isExecutable(cachyOSWineBinary) {
@@ -698,6 +717,16 @@ func resolveBinaries() (wine, wineboot, wineserver string, err error) {
 		if wine, err = exec.LookPath(wine); err != nil {
 			return "", "", "", fmt.Errorf("resolve %s: %w", wineOverrideEnv, err)
 		}
+	}
+	if wayland && os.Getenv(wineOverrideEnv) == "" {
+		pathWine, _ := exec.LookPath("wine")
+		wine = selectHDRWine(wine, pathWine, func(path string) string {
+			out, err := exec.Command(path, "--version").Output()
+			if err != nil {
+				return ""
+			}
+			return strings.TrimSpace(string(out))
+		})
 	}
 	if !isExecutable(wine) {
 		return "", "", "", fmt.Errorf("wine executable is not usable: %s", wine)

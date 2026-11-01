@@ -58,6 +58,9 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	}
 
 	runtime := wine.NewAdapter(log)
+	if driver == env.DisplayDriverWayland {
+		runtime = wine.NewWaylandAdapter(log)
+	}
 	downloader := http.NewDownloader()
 
 	installer := services.NewInstallerService(runtime, downloader, fs, cfg, func() *domain.WineEnv {

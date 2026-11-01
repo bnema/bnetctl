@@ -43,7 +43,7 @@ bnetctl clean -a         # Full purge (cache, prefix, desktop entry, data)
 
 ## What it does
 
-- Uses `/opt/wine-cachyos/bin/wine` by default, or `BNETCTL_WINE` when set
+- Prefers `/opt/wine-cachyos/bin/wine`; in Wayland mode, prefers Wine >= 11.19, falling back to `wine` on PATH when necessary. `BNETCTL_WINE` always wins
 - Creates a Wine prefix with DXVK + VKD3D-proton auto-installed
 - Downloads and runs the official Battle.net installer
 - Uses native Wayland by default for both `install` and `launch`, with `--display-driver x11` available for XWayland
@@ -51,6 +51,20 @@ bnetctl clean -a         # Full purge (cache, prefix, desktop entry, data)
 - Disables Wine systray (orphan floating window on Wayland tiling WMs)
 - Extracts the Battle.net icon and creates separate Wayland and X11 desktop entries
 - Graceful process management with orphan cleanup
+
+## Wine selection on Wayland
+
+Native Wayland HDR requires Wine >= 11.19 and an HDR-capable compositor.
+For `install` and `launch`, bnetctl prefers CachyOS Wine when it meets that
+minimum, otherwise a sufficiently recent `wine` on PATH. If neither qualifies,
+it keeps the usual preference and logs a warning. X11 selection is unchanged.
+`BNETCTL_WINE=/usr/bin/wine` explicitly selects an installation; `wineboot` and
+`wineserver` must be beside its resolved Wine binary. The selected path and
+version are logged once per launch.
+
+Wine selection alone does not enable HDR: DXVK still needs `DXVK_HDR=1`.
+Automatic HDR environment configuration and managed prefix upgrades are not yet
+implemented. Do not switch a live prefix between Wine installations.
 
 ## Directories
 

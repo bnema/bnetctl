@@ -42,9 +42,12 @@ func runLaunch(cmd *cobra.Command, args []string) error {
 	}
 
 	runtime := wine.NewAdapter(log)
+	if driver == env.DisplayDriverWayland {
+		runtime = wine.NewWaylandAdapter(log)
+	}
 	fs := xdg.NewFilesystem()
 
-	// Display Wine version before launch (display-only; service re-detects internally)
+	// Display the selected Wine version; the adapter retains it for this launch.
 	if rt, err := runtime.Detect(); err == nil {
 		fmt.Println(styles.StepPrefix.Render("Wine: ") + rt.Version)
 	}
