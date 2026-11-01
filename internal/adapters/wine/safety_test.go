@@ -118,11 +118,34 @@ func TestUpdateRefusesDowngradeWithoutWine(t *testing.T) {
 func TestLockPreflightDoesNotProbeWine(t *testing.T) {
 	a, prefix, calls := migrationFixture(t)
 	mustWrite(t, filepath.Join(prefix, "pfx", "user.reg"), "[Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\RunOnce]\n@=\"pending\"\n")
-	t.Setenv(wineOverrideEnv, a.detected.WineBin)
+	dir := fakeVersionInstall(t, "wine-11.21")
+	t.Setenv(wineOverrideEnv, filepath.Join(dir, "wine"))
 	if _, err := a.LockPrefix(prefix); err == nil || !strings.Contains(err.Error(), "pending") {
 		t.Fatalf("preflight: %v", err)
 	}
 	if _, err := os.Stat(calls); !os.IsNotExist(err) {
 		t.Fatal("preflight probed Wine")
+	}
+}
+
+func TestMatchingVersionAllowsRunOnce(t *testing.T) {
+	a, prefix, _ := migrationFixture(t)
+	mustWrite(t, filepath.Join(prefix, prefixVersionFile), "wine-11.21\n")
+	mustWrite(t, filepath.Join(prefix, "pfx/user.reg"), "[Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\RunOnce]\n\"pending\"=\"allowed on normal launch\"\n")
+	dir := fakeVersionInstall(t, "wine-11.21")
+	t.Setenv(wineOverrideEnv, filepath.Join(dir, "wine"))
+	release, err := a.LockPrefix(prefix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	if err := a.UpdatePrefix(prefix, nil); err != nil {
+		t.Fatalf("matching version refused RunOnce: %v", err)
+	}
+	release()
+	// Recovery still needs the preflight even when the committed version matches.
+	mustWrite(t, filepath.Join(prefix, prefixVersionFile+".migrating"), "wine-11.21\n")
+	if _, err := a.LockPrefix(prefix); err == nil || !strings.Contains(err.Error(), "RunOnce") {
+		t.Fatalf("recovery skipped preflight: %v", err)
 	}
 }

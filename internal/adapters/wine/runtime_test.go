@@ -398,7 +398,10 @@ func waitForExit(t *testing.T, cmd *exec.Cmd) {
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
 	select {
-	case <-done:
+	case err := <-done:
+		if err != nil {
+			t.Logf("process exited: %v", err)
+		}
 	case <-time.After(2 * time.Second):
 		t.Fatalf("process %d survived the kill", cmd.Process.Pid)
 	}

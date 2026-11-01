@@ -133,12 +133,14 @@ func (a *Adapter) LockPrefix(prefix string) (func(), error) {
 	var once sync.Once
 	release := func() { once.Do(func() { _ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN); _ = f.Close() }) }
 	a.minimum = ""
+	versions := map[string]string{}
 	for _, name := range []string{prefixVersionFile, prefixVersionFile + ".migrating"} {
 		v, err := readVersion(filepath.Join(prefix, name))
 		if err != nil {
 			release()
 			return nil, err
 		}
+		versions[name] = v
 		if v != "" {
 			cmp := 1
 			if a.minimum != "" {
@@ -153,14 +155,27 @@ func (a *Adapter) LockPrefix(prefix string) (func(), error) {
 			}
 		}
 	}
-	if err := checkRunOnce(filepath.Join(prefix, "pfx")); err != nil {
+	a.detected = nil
+	rt, err := a.Detect()
+	if err != nil {
 		release()
 		return nil, err
 	}
-	a.detected = nil
-	if _, err := a.Detect(); err != nil {
-		release()
-		return nil, err
+	if versions[prefixVersionFile+".migrating"] != "" || versions[prefixVersionFile] != rt.Version {
+		if err := checkRunOnce(filepath.Join(prefix, "pfx")); err != nil {
+			release()
+			return nil, err
+		}
+		// New prefixes have no system.reg until wineboot initializes them.
+		if _, err := os.Stat(filepath.Join(prefix, "pfx")); err == nil {
+			if _, err := readPrefixArch(filepath.Join(prefix, "pfx")); err != nil {
+				release()
+				return nil, err
+			}
+		} else if !os.IsNotExist(err) {
+			release()
+			return nil, err
+		}
 	}
 	return release, nil
 }

@@ -23,7 +23,7 @@ func writeVersionRecord(prefix, name, version string) error {
 		return err
 	}
 	temp := f.Name()
-	defer os.Remove(temp)
+	defer func() { _ = os.Remove(temp) }()
 	if _, err := f.WriteString(version + "\n"); err != nil {
 		_ = f.Close()
 		return err
@@ -42,7 +42,7 @@ func writeVersionRecord(prefix, name, version string) error {
 	if err != nil {
 		return err
 	}
-	defer dir.Close()
+	defer func() { _ = dir.Close() }()
 	return dir.Sync()
 }
 
