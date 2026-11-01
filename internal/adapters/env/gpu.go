@@ -89,6 +89,11 @@ func BattleNetArgsForDisplay(driver DisplayDriver) []string {
 }
 
 func BuildGPUEnvForDisplay(driver DisplayDriver) *domain.WineEnv {
+	return BuildGPUEnvForDisplayHDR(driver, false)
+}
+
+// BuildGPUEnvForDisplayHDR applies the launch HDR policy.
+func BuildGPUEnvForDisplayHDR(driver DisplayDriver, noHDR bool) *domain.WineEnv {
 	env := &domain.WineEnv{
 		Vars: make(map[string]string),
 	}
@@ -110,6 +115,11 @@ func BuildGPUEnvForDisplay(driver DisplayDriver) *domain.WineEnv {
 	if driver == DisplayDriverWayland {
 		// Without an X11 display, Wine selects its native Wayland driver.
 		env.Unset = append(env.Unset, "DISPLAY")
+		if noHDR {
+			env.Vars["DXVK_HDR"] = "0"
+		} else if _, set := os.LookupEnv("DXVK_HDR"); !set {
+			env.Vars["DXVK_HDR"] = "1"
+		}
 	}
 
 	// NOTE: do NOT set DISABLE_LSFGVK here. lsfg-vk is a GLOBAL Vulkan
@@ -134,4 +144,18 @@ func BuildGPUEnvForDisplay(driver DisplayDriver) *domain.WineEnv {
 	env.Vars["FREETYPE_PROPERTIES"] = "truetype:interpreter-version=35"
 
 	return env
+}
+
+// HDRStatus explains the effective HDR launch policy for logging.
+func HDRStatus(driver DisplayDriver, noHDR bool) (bool, string) {
+	if driver == DisplayDriverX11 {
+		return false, "x11"
+	}
+	if noHDR {
+		return false, "--no-hdr"
+	}
+	if value, set := os.LookupEnv("DXVK_HDR"); set {
+		return value == "1", "user DXVK_HDR=" + value
+	}
+	return true, "wayland default"
 }

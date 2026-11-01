@@ -15,6 +15,7 @@ import (
 )
 
 var displayDriver string
+var noHDR bool
 
 var launchCmd = &cobra.Command{
 	Use:     "launch",
@@ -25,6 +26,7 @@ var launchCmd = &cobra.Command{
 
 func init() {
 	registerDisplayDriverFlag(launchCmd, &displayDriver)
+	launchCmd.Flags().BoolVar(&noHDR, "no-hdr", false, "Disable automatic Wayland HDR")
 	rootCmd.AddCommand(launchCmd)
 }
 
@@ -54,7 +56,9 @@ func runLaunch(cmd *cobra.Command, args []string) error {
 	fmt.Println(styles.StepPrefix.Render("Launching Battle.net..."))
 
 	launcher := services.NewLaunchService(runtime, fs, cfg, func() *domain.WineEnv {
-		return env.BuildGPUEnvForDisplay(driver)
+		enabled, reason := env.HDRStatus(driver, noHDR)
+		log.Info("hdr env", "enabled", enabled, "reason", reason)
+		return env.BuildGPUEnvForDisplayHDR(driver, noHDR)
 	}, log, env.BattleNetArgsForDisplay(driver)...)
 
 	log.Info("launching battle.net")
