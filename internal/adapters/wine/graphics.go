@@ -25,6 +25,10 @@ func graphicsBase(script, fallback string) string {
 	return fallback
 }
 func graphicsPlan(rt *domain.WineRuntime, pfx string) ([]graphicsDLL, error) {
+	prefixArch, err := readPrefixArch(pfx)
+	if err != nil {
+		return nil, err
+	}
 	var result []graphicsDLL
 	for _, pkg := range []struct {
 		base, lib32 string
@@ -33,10 +37,17 @@ func graphicsPlan(rt *domain.WineRuntime, pfx string) ([]graphicsDLL, error) {
 		{graphicsBase(rt.DXVKSetupBin, "/usr/share/dxvk"), "x32", []string{"dxgi", "d3d8", "d3d9", "d3d10core", "d3d11"}},
 		{graphicsBase(rt.VKD3DSetupBin, "/usr/share/vkd3d-proton"), "x86", []string{"d3d12", "d3d12core"}},
 	} {
-		for _, arch := range []struct{ lib, dir string }{{"x64", "system32"}, {pkg.lib32, "syswow64"}} {
+		arches := []struct{ lib, dir string }{{"x64", "system32"}, {pkg.lib32, "syswow64"}}
+		if prefixArch == "win32" {
+			arches = []struct{ lib, dir string }{{pkg.lib32, "system32"}}
+		}
+		for _, arch := range arches {
 			for _, name := range pkg.names {
 				src := filepath.Join(pkg.base, arch.lib, name+".dll")
 				info, err := os.Stat(src)
+				if name == "d3d8" && os.IsNotExist(err) {
+					continue
+				}
 				if err != nil {
 					return nil, fmt.Errorf("graphics DLL %s: %w", src, err)
 				}
@@ -140,4 +151,27 @@ func verifyGraphics(rt *domain.WineRuntime, env map[string]string, plan []graphi
 		}
 	}
 	return nil
+}
+
+// Existing prefixes declare their architecture in Wine's registry export header.
+func readPrefixArch(pfx string) (string, error) {
+	data, err := os.ReadFile(filepath.Join(pfx, "system.reg"))
+	if err != nil {
+		return "", fmt.Errorf("read prefix architecture: %w", err)
+	}
+	arch := ""
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "#arch=") {
+			value := strings.TrimPrefix(line, "#arch=")
+			if arch != "" && arch != value {
+				return "", fmt.Errorf("conflicting prefix architecture")
+			}
+			arch = value
+		}
+	}
+	if arch != "win64" && arch != "win32" {
+		return "", fmt.Errorf("unknown prefix architecture %q in system.reg", arch)
+	}
+	return arch, nil
 }

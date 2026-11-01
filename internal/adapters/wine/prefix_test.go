@@ -16,7 +16,7 @@ func migrationFixture(t *testing.T) (*Adapter, string, string) {
 	t.Helper()
 	dir := t.TempDir()
 	prefix := filepath.Join(dir, "prefix")
-	mustWrite(t, filepath.Join(prefix, "pfx", "system.reg"), "WINE REGISTRY Version 2\n")
+	mustWrite(t, filepath.Join(prefix, "pfx", "system.reg"), "WINE REGISTRY Version 2\n#arch=win64\n")
 	calls := filepath.Join(dir, "calls")
 	script := fmt.Sprintf(`#!/bin/sh
 if [ "$1" = '-k0' ]; then exit 1; fi
@@ -76,11 +76,12 @@ func TestPrefixMigration(t *testing.T) {
 				mustWrite(t, marker+".migrating", tt.pending+"\n")
 			}
 			if tt.fail != "" {
-				if tt.fail == "delete" {
+				switch tt.fail {
+				case "delete":
 					mustWrite(t, a.detected.WineBin, "#!/bin/sh\nrm -f \"$WINEPREFIX/drive_c/windows/system32/dxgi.dll\"\nexit 0\n")
-				} else if tt.fail == "query" {
+				case "query":
 					mustWrite(t, a.detected.WineBin, "#!/bin/sh\nexit 0\n")
-				} else {
+				default:
 					mustWrite(t, filepath.Join(filepath.Dir(calls), tt.fail), "#!/bin/sh\nif [ \"$1\" = '-k0' ]; then exit 1; fi\nexit 7\n")
 				}
 			}
