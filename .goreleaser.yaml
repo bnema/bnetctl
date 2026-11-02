@@ -1,0 +1,109 @@
+version: 2
+
+project_name: bnetctl
+
+# Releases are published on ermite. In CI the runner sets GITHUB_API_URL and
+# GITHUB_SERVER_URL to an address the job can reach; the public URLs are the
+# fallback for a local run.
+github_urls:
+  api: '{{ or (index .Env "GITHUB_API_URL") "https://git.bnema.dev/-/github/api" }}/'
+  upload: '{{ or (index .Env "GITHUB_API_URL") "https://git.bnema.dev/-/github/api" }}/uploads/'
+  download: '{{ or (index .Env "GITHUB_SERVER_URL") "https://git.bnema.dev" }}/'
+
+builds:
+  - id: bnetctl
+    main: .
+    binary: bnetctl
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/bnema/bnetctl/cmd.version={{.Version}}
+      - -X github.com/bnema/bnetctl/cmd.commit={{.ShortCommit}}
+
+archives:
+  - id: default
+    name_template: >-
+      {{ .ProjectName }}_{{ .Os }}_{{ if eq .Arch "amd64" }}x86_64{{ else }}{{ .Arch }}{{ end }}
+    formats: ['tar.gz']
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+changelog:
+  sort: asc
+  use: git
+  filters:
+    exclude:
+      - '^docs(\(.+\))?:'
+      - '^test(\(.+\))?:'
+      - '^ci(\(.+\))?:'
+      - '^chore(\(.+\))?:'
+      - '^build\(deps.*\):'
+      - Merge pull request
+      - Merge branch
+  groups:
+    - title: Features
+      regexp: '^feat(\(.+\))?:'
+      order: 0
+    - title: Bug Fixes
+      regexp: '^fix(\(.+\))?:'
+      order: 1
+    - title: Performance
+      regexp: '^perf(\(.+\))?:'
+      order: 2
+    - title: Refactoring
+      regexp: '^refactor(\(.+\))?:'
+      order: 3
+    - title: Other Changes
+      order: 999
+
+release:
+  github:
+    owner: bnema
+    name: bnetctl
+  draft: false
+  replace_existing_draft: true
+  replace_existing_artifacts: true
+  prerelease: auto
+  make_latest: true
+  footer: |
+    ## Arch Linux
+    ```sh
+    yay -S bnetctl-bin
+    ```
+
+git:
+  tag_sort: -version:refname
+
+aurs:
+  - name: bnetctl-bin
+    ids: ['default']
+    homepage: https://git.bnema.dev/bnetctl
+    # Public URL: github_urls.download is the CI-only relay address.
+    url_template: 'https://git.bnema.dev/bnetctl/releases/download/{{ .Tag }}/{{ .ArtifactName }}'
+    description: CLI to install, manage, and run Battle.net on Linux via Wine
+    maintainers:
+      - bnema <b at bnema dot dev>
+    license: MIT
+    private_key: '{{ .Env.AUR_KEY }}'
+    git_url: ssh://aur@aur.archlinux.org/bnetctl-bin.git
+    # auto: prerelease tags (v1.2.3-rc.1) are not pushed to AUR.
+    skip_upload: auto
+    provides:
+      - bnetctl
+    conflicts:
+      - bnetctl
+    package: |-
+      install -Dm755 "./bnetctl" "${pkgdir}/usr/bin/bnetctl"
+      install -Dm644 "./LICENSE" "${pkgdir}/usr/share/licenses/bnetctl-bin/LICENSE"
+    commit_msg_template: 'Update to {{ .Tag }}'
