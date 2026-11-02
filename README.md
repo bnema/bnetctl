@@ -6,13 +6,18 @@ GPU-specific settings are applied automatically for AMD, NVIDIA, and Intel.
 
 ## Requirements
 
-- Wine. On Arch Linux, `wine` and `wine-staging` both work:
+- **Wine Staging >= 11.19**. On Arch Linux:
   ```bash
-  sudo pacman -S wine
+  sudo pacman -S wine-staging
   ```
-  HDR on native Wayland needs **Wine >= 11.19**. Older Wine still runs, but
-  bnetctl warns and HDR is unavailable. CachyOS Wine (`wine-cachyos-opt`)
-  currently ships 10.x, so it does not qualify.
+  - *Staging:* upstream Wine crashes the Battle.net launcher at startup
+    ([Wine bug 56486](https://bugs.winehq.org/show_bug.cgi?id=56486)). The
+    fix is the `dcomp-DCompositionCreateDevice2` patchset, which is only in
+    Wine Staging so far.
+  - *11.19:* minimum version for HDR on native Wayland. With older Wine,
+    bnetctl warns and HDR is unavailable.
+  - CachyOS Wine (`wine-cachyos-opt`) currently ships 10.x and does not meet
+    either requirement.
 - Vulkan drivers for your GPU, plus DXVK and VKD3D-proton package data.
   On CachyOS these are available as `dxvk-mingw-git` and
   `vkd3d-proton-mingw-git`; other distributions may package them differently.
@@ -77,6 +82,10 @@ X11 mode leaves the user's HDR environment untouched.
 
 ## Known issues
 
+- **Launcher crash loop with upstream Wine:** the Battle.net launcher crashes
+  in `libcef` at startup and keeps restarting
+  ([Wine bug 56486](https://bugs.winehq.org/show_bug.cgi?id=56486), still
+  open upstream). Use Wine Staging, which carries the fix.
 - **Battle.net UI under native Wayland:** Wine's Wayland driver cannot render
   the cross-process GPU surface used by Battle.net's embedded Chromium (CEF).
   bnetctl keeps CEF GPU rendering in-process and disables Chromium's background

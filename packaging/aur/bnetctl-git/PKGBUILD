@@ -7,8 +7,8 @@ arch=('x86_64' 'aarch64')
 url='https://git.bnema.dev/bnetctl'
 license=('MIT')
 makedepends=('go>=2:1.26.0' 'git')
-optdepends=('wine-staging: Wine runtime (>= 11.19 for Wayland)'
-	'wine: alternative Wine runtime'
+optdepends=('wine-staging: recommended Wine runtime (launcher crash fix, >= 11.19 for Wayland HDR)'
+	'wine: alternative Wine runtime (launcher may crash at startup)'
 	'wine-cachyos-opt: fallback Wine runtime'
 	'dxvk-mingw-git: Direct3D 8/9/10/11 translation to Vulkan'
 	'vkd3d-proton-mingw-git: Direct3D 12 translation to Vulkan'
