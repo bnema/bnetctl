@@ -79,7 +79,9 @@ X11 mode leaves the user's HDR environment untouched.
 
 ## Directories
 
-Paths respect the corresponding XDG data/cache settings.
+Paths are based on your home directory; `XDG_DATA_HOME` and `XDG_CACHE_HOME`
+are not currently honored. Full cleanup retains the data directory and its
+`prefix.lock` file so concurrent invocations keep using the same lock inode.
 
 | Type | Default path |
 |------|--------------|
