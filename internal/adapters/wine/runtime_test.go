@@ -1,6 +1,7 @@
 package wine
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -241,45 +242,67 @@ func winePrefixPath(prefixPath string) string {
 	return filepath.Join(prefixPath, "pfx")
 }
 
-// startFakeWineProcess starts a long-running process that the prefix scan accepts as
-// part of a wine session, either through wine's environment (env) or through a
-// Windows executable name. A name other than "sleep" runs a copy of the sleep
-// binary, so /proc/<pid>/comm matches it.
-func startFakeWineProcess(t *testing.T, name string, env ...string) *exec.Cmd {
+// TestWineProcessHelper runs only in a child test binary. Unlike a renamed
+// system sleep, this also works with multicall coreutils that reject aliases.
+func TestWineProcessHelper(t *testing.T) {
+	name := os.Getenv("BNETCTL_TEST_PROCESS_NAME")
+	if name == "" {
+		return
+	}
+	if err := os.WriteFile("/proc/self/comm", []byte(name), 0600); err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println("ready")
+	for {
+		time.Sleep(time.Hour)
+	}
+}
+
+type fakeWineProcess struct {
+	*exec.Cmd
+	done    chan struct{}
+	exitErr error
+}
+
+// startFakeWineProcess waits until comm has been set before allowing a scan.
+// Every child has exactly one Wait, including clients killed by stub Wine.
+func startFakeWineProcess(t *testing.T, name string, env ...string) *fakeWineProcess {
 	t.Helper()
-
 	if len(name) > 15 {
-		t.Fatalf("process name %q exceeds the 15 bytes the kernel keeps in comm", name)
+		t.Fatalf("process name %q exceeds comm limit", name)
 	}
-
-	sleep, err := exec.LookPath("sleep")
+	exe, err := os.Executable()
 	if err != nil {
-		t.Skipf("sleep is unavailable: %v", err)
+		t.Fatal(err)
 	}
-
-	exe := sleep
-	if name != filepath.Base(sleep) {
-		data, err := os.ReadFile(sleep)
-		if err != nil {
-			t.Fatal(err)
-		}
-		exe = filepath.Join(t.TempDir(), name)
-		if err := os.WriteFile(exe, data, 0o755); err != nil {
-			t.Fatal(err)
-		}
+	cmd := exec.Command(exe, "-test.run=^TestWineProcessHelper$")
+	cmd.Env = append(os.Environ(), append(env, "BNETCTL_TEST_PROCESS_NAME="+name)...)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	cmd := exec.Command(exe, "60")
-	cmd.Env = append(os.Environ(), env...)
+	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
-		t.Fatalf("start %s: %v", name, err)
+		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = cmd.Process.Kill() })
-	return cmd
+	child := &fakeWineProcess{Cmd: cmd, done: make(chan struct{})}
+	go func() { child.exitErr = cmd.Wait(); close(child.done) }()
+	t.Cleanup(func() { _ = cmd.Process.Kill(); <-child.done })
+	ready := make(chan string, 1)
+	go func() { line, _ := bufio.NewReader(stdout).ReadString('\n'); ready <- line }()
+	select {
+	case line := <-ready:
+		if line != "ready\n" {
+			t.Fatalf("child did not become ready: %q", line)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("child readiness timed out")
+	}
+	return child
 }
 
 // requireStopped fails the test unless the result reports exactly the given process.
-func requireStopped(t *testing.T, result domain.StopResult, cmd *exec.Cmd, name string) {
+func requireStopped(t *testing.T, result domain.StopResult, cmd *fakeWineProcess, name string) {
 	t.Helper()
 
 	if result.Wineserver != nil || len(result.Session) != 0 {
@@ -392,15 +415,13 @@ func TestGracefulKillReportsWineserverWithoutSnapshot(t *testing.T) {
 }
 
 // waitForExit fails the test unless the process exits on its own.
-func waitForExit(t *testing.T, cmd *exec.Cmd) {
+func waitForExit(t *testing.T, cmd *fakeWineProcess) {
 	t.Helper()
 
-	done := make(chan error, 1)
-	go func() { done <- cmd.Wait() }()
 	select {
-	case err := <-done:
-		if err != nil {
-			t.Logf("process exited: %v", err)
+	case <-cmd.done:
+		if cmd.exitErr != nil {
+			t.Logf("process exited: %v", cmd.exitErr)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatalf("process %d survived the kill", cmd.Process.Pid)
@@ -408,7 +429,7 @@ func waitForExit(t *testing.T, cmd *exec.Cmd) {
 }
 
 // requireAlive fails the test when a process that had to be left alone is gone.
-func requireAlive(t *testing.T, cmd *exec.Cmd) {
+func requireAlive(t *testing.T, cmd *fakeWineProcess) {
 	t.Helper()
 
 	status, err := os.ReadFile(fmt.Sprintf("/proc/%d/status", cmd.Process.Pid))
