@@ -92,3 +92,5 @@ func DefaultConfig() (*domain.Config, error) {
 		LogFile:   filepath.Join(cacheDir, "bnetctl.log"),
 	}, nil
 }
+
+func (f *Filesystem) ReadDir(path string) ([]os.DirEntry, error) { return os.ReadDir(path) }

@@ -14,6 +14,9 @@ type FilesystemPort interface {
 	// Exists checks if a path exists
 	Exists(path string) bool
 
+	// ReadDir lists directory entries.
+	ReadDir(path string) ([]os.DirEntry, error)
+
 	// Remove removes a file or directory recursively
 	Remove(path string) error
 

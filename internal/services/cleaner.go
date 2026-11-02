@@ -2,6 +2,9 @@ package services
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/log"
@@ -71,25 +74,38 @@ func (s *CleanerService) CleanAll() error {
 	log := s.log
 	log.Info("cleaning all bnetctl data")
 
-	if err := s.CleanPrefix(); err != nil {
-		return err
-	}
+	return s.runtime.WithStoppedPrefix(s.cfg.PrefixDir, 10*time.Second, func() error {
+		if err := s.CleanCache(); err != nil {
+			return err
+		}
+		for _, name := range []string{ports.EntryWayland, ports.EntryX11, ports.EntryLegacy} {
+			_ = s.desktop.RemoveEntry(name)
+		}
+		// Preserve the persistent lock inode and every ancestor containing it.
+		return s.removeContentsExcept(s.cfg.DataDir, filepath.Clean(s.cfg.PrefixDir)+".lock")
+	})
+}
 
-	if err := s.CleanCache(); err != nil {
-		return err
+func (s *CleanerService) removeContentsExcept(dir, keep string) error {
+	entries, err := s.fs.ReadDir(dir)
+	if os.IsNotExist(err) {
+		return nil
 	}
-
-	// Remove desktop entries (Wayland + X11 plus legacy single entry)
-	for _, name := range []string{ports.EntryWayland, ports.EntryX11, ports.EntryLegacy} {
-		_ = s.desktop.RemoveEntry(name)
+	if err != nil {
+		return fmt.Errorf("read data directory: %w", err)
 	}
-
-	// Remove data dir
-	if s.fs.Exists(s.cfg.DataDir) {
-		if err := s.fs.Remove(s.cfg.DataDir); err != nil {
-			return fmt.Errorf("remove data dir: %w", err)
+	for _, entry := range entries {
+		path := filepath.Join(dir, entry.Name())
+		if path == keep {
+			continue
+		}
+		if strings.HasPrefix(keep, path+string(filepath.Separator)) {
+			if err := s.removeContentsExcept(path, keep); err != nil {
+				return err
+			}
+		} else if err := s.fs.Remove(path); err != nil {
+			return fmt.Errorf("remove data: %w", err)
 		}
 	}
-
 	return nil
 }
