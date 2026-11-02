@@ -84,7 +84,7 @@ func chooseMinimumWine(selected, version, minimum string) (string, string, error
 		return "", "", fmt.Errorf("refusing Wine downgrade: BNETCTL_WINE is %s; prefix requires >= %s", version, minimum)
 	}
 	path, _ := exec.LookPath("wine")
-	for _, candidate := range []string{cachyOSWineBinary, path} {
+	for _, candidate := range []string{path, cachyOSWineBinary} {
 		if candidate == "" || !isExecutable(candidate) {
 			continue
 		}

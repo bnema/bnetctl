@@ -22,14 +22,3 @@ func supportsWaylandHDR(version string) bool {
 	}
 	return major > 11 || major == 11 && minor >= 19
 }
-
-// Keep the legacy preference unless a candidate meets the HDR minimum.
-func selectHDRWine(preferred, pathWine string, version func(string) string) string {
-	if supportsWaylandHDR(version(preferred)) {
-		return preferred
-	}
-	if pathWine != "" && pathWine != preferred && supportsWaylandHDR(version(pathWine)) {
-		return pathWine
-	}
-	return preferred
-}

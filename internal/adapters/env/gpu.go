@@ -138,10 +138,10 @@ func BuildGPUEnvForDisplayHDR(driver DisplayDriver, noHDR bool) *domain.WineEnv 
 	// environment, so force-disabling would also kill frame generation
 	// for games. Keep user Vulkan layers untouched.
 
-	// NTSync: wine-cachyos detects /dev/ntsync automatically. No env var needed.
+	// NTSync: Wine detects /dev/ntsync automatically. No env var needed.
 
 	// Wine sync primitives — enable esync/fsync for frame pacing.
-	// NTSync (preferred) is auto-detected by wine-cachyos from /dev/ntsync.
+	// NTSync (preferred) is auto-detected by Wine from /dev/ntsync.
 	// esync/fsync are fallbacks if ntsync is unavailable.
 	env.Vars["WINEESYNC"] = "1"
 	env.Vars["WINEFSYNC"] = "1"

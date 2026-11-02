@@ -20,10 +20,10 @@ var verbose bool
 
 var rootCmd = &cobra.Command{
 	Use:     "bnetctl",
-	Short:   "Battle.net launcher for Linux via wine-cachyos",
+	Short:   "Battle.net launcher for Linux via Wine",
 	Version: version + " (" + commit + ")",
 	Long: `A CLI tool to install, manage, and run Battle.net on Linux
-using wine-cachyos as the compatibility layer.
+using Wine as the compatibility layer.
 
 Quick start:
   bnetctl install    Download and install Battle.net

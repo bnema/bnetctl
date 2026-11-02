@@ -15,7 +15,7 @@ type RuntimePort interface {
 	// LockPrefix locks maintenance through process start and selects a non-downgrading runtime.
 	LockPrefix(prefixPath string) (release func(), err error)
 
-	// Detect checks if wine-cachyos is available on the system
+	// Detect checks if Wine is available on the system
 	Detect() (*domain.WineRuntime, error)
 
 	// UpdatePrefix updates the prefix and graphics when the selected Wine version changes.

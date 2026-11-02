@@ -23,7 +23,7 @@ const (
 	cachyOSWineBinary = "/opt/wine-cachyos/bin/wine"
 )
 
-// Adapter implements ports.RuntimePort using wine-cachyos directly
+// Adapter implements ports.RuntimePort using Wine directly
 type Adapter struct {
 	log      *log.Logger
 	wayland  bool
@@ -43,7 +43,7 @@ func NewWaylandAdapter(log *log.Logger) *Adapter {
 	return &Adapter{log: log, wayland: true}
 }
 
-// Detect checks if wine-cachyos is available and returns runtime info
+// Detect checks if Wine is available and returns runtime info
 func (a *Adapter) Detect() (*domain.WineRuntime, error) {
 	log := a.log
 	if a.detected != nil {
@@ -734,28 +734,20 @@ func resolveBinaries() (wine, wineboot, wineserver string, err error) {
 	return resolveBinariesForWayland(false)
 }
 
-func resolveBinariesForWayland(wayland bool) (wine, wineboot, wineserver string, err error) {
+func resolveBinariesForWayland(_ bool) (wine, wineboot, wineserver string, err error) {
 	wine = os.Getenv(wineOverrideEnv)
 	if wine == "" {
-		if isExecutable(cachyOSWineBinary) {
-			wine = cachyOSWineBinary
-		} else if wine, err = exec.LookPath("wine"); err != nil {
-			return "", "", "", fmt.Errorf("wine not found: %w (install wine-cachyos-opt or set %s)", err, wineOverrideEnv)
+		if wine, err = exec.LookPath("wine"); err != nil {
+			if isExecutable(cachyOSWineBinary) {
+				wine = cachyOSWineBinary
+			} else {
+				return "", "", "", fmt.Errorf("wine not found: %w (install wine-staging or wine, or set %s)", err, wineOverrideEnv)
+			}
 		}
 	} else if !filepath.IsAbs(wine) {
 		if wine, err = exec.LookPath(wine); err != nil {
 			return "", "", "", fmt.Errorf("resolve %s: %w", wineOverrideEnv, err)
 		}
-	}
-	if wayland && os.Getenv(wineOverrideEnv) == "" {
-		pathWine, _ := exec.LookPath("wine")
-		wine = selectHDRWine(wine, pathWine, func(path string) string {
-			out, err := exec.Command(path, "--version").Output()
-			if err != nil {
-				return ""
-			}
-			return strings.TrimSpace(string(out))
-		})
 	}
 	if !isExecutable(wine) {
 		return "", "", "", fmt.Errorf("wine executable is not usable: %s", wine)

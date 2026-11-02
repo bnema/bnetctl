@@ -28,26 +28,26 @@ func TestSupportsWaylandHDR(t *testing.T) {
 	}
 }
 
-func TestSelectHDRWine(t *testing.T) {
-	for _, tt := range []struct{ name, preferredVersion, pathVersion, path, want string }{
-		{"both capable", "wine-11.19", "wine-11.21", "path", "preferred"},
-		{"path capable", "wine-10.0", "wine-11.21", "path", "path"},
-		{"neither capable", "wine-10.0", "wine-11.18", "path", "preferred"},
-		{"preferred malformed", "bad", "wine-11.21", "path", "path"},
-		{"path malformed", "wine-10.0", "bad", "path", "preferred"},
-		{"path absent", "wine-10.0", "", "", "preferred"},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			got := selectHDRWine("preferred", tt.path, func(path string) string {
-				if path == "preferred" {
-					return tt.preferredVersion
-				}
-				return tt.pathVersion
-			})
-			if got != tt.want {
-				t.Fatalf("got %s, want %s", got, tt.want)
-			}
-		})
+func TestPathWinePreferredInAllModes(t *testing.T) {
+	dir := fakeVersionInstall(t, "wine-11.21")
+	t.Setenv("PATH", dir)
+	t.Setenv(wineOverrideEnv, "")
+	for _, wayland := range []bool{false, true} {
+		wine, boot, server, err := resolveBinariesForWayland(wayland)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if wine != filepath.Join(dir, "wine") || boot != filepath.Join(dir, "wineboot") || server != filepath.Join(dir, "wineserver") {
+			t.Fatalf("selection: %s %s %s", wine, boot, server)
+		}
+	}
+	override := fakeVersionInstall(t, "wine-11.19")
+	t.Setenv(wineOverrideEnv, filepath.Join(override, "wine"))
+	for _, wayland := range []bool{false, true} {
+		wine, _, _, err := resolveBinariesForWayland(wayland)
+		if err != nil || wine != filepath.Join(override, "wine") {
+			t.Fatalf("override: %s %v", wine, err)
+		}
 	}
 }
 
