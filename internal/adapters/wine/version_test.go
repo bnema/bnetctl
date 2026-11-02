@@ -3,6 +3,7 @@ package wine
 import (
 	"bytes"
 	"github.com/charmbracelet/log"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -33,20 +34,25 @@ func TestPathWinePreferredInAllModes(t *testing.T) {
 	t.Setenv("PATH", dir)
 	t.Setenv(wineOverrideEnv, "")
 	for _, wayland := range []bool{false, true} {
-		wine, boot, server, err := resolveBinariesForWayland(wayland)
+		a := &Adapter{log: log.New(io.Discard), wayland: wayland}
+		rt, err := a.Detect()
 		if err != nil {
 			t.Fatal(err)
 		}
-		if wine != filepath.Join(dir, "wine") || boot != filepath.Join(dir, "wineboot") || server != filepath.Join(dir, "wineserver") {
-			t.Fatalf("selection: %s %s %s", wine, boot, server)
+		if rt.WineBin != filepath.Join(dir, "wine") || rt.WineBootBin != filepath.Join(dir, "wineboot") || rt.WineServerBin != filepath.Join(dir, "wineserver") {
+			t.Fatalf("selection: %+v", rt)
 		}
 	}
 	override := fakeVersionInstall(t, "wine-11.19")
 	t.Setenv(wineOverrideEnv, filepath.Join(override, "wine"))
 	for _, wayland := range []bool{false, true} {
-		wine, _, _, err := resolveBinariesForWayland(wayland)
-		if err != nil || wine != filepath.Join(override, "wine") {
-			t.Fatalf("override: %s %v", wine, err)
+		a := &Adapter{log: log.New(io.Discard), wayland: wayland}
+		rt, err := a.Detect()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rt.WineBin != filepath.Join(override, "wine") {
+			t.Fatalf("override: %+v", rt)
 		}
 	}
 }

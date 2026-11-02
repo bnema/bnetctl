@@ -50,7 +50,7 @@ func (a *Adapter) Detect() (*domain.WineRuntime, error) {
 		return a.detected, nil
 	}
 
-	wineBin, wineBootBin, wineServerBin, err := resolveBinariesForWayland(a.wayland)
+	wineBin, wineBootBin, wineServerBin, err := resolveBinaries()
 	if err != nil {
 		return nil, err
 	}
@@ -730,10 +730,6 @@ func (a *Adapter) buildEnv(pfxDir string, wineEnv *domain.WineEnv) map[string]st
 }
 
 func resolveBinaries() (wine, wineboot, wineserver string, err error) {
-	return resolveBinariesForWayland(false)
-}
-
-func resolveBinariesForWayland(_ bool) (wine, wineboot, wineserver string, err error) {
 	wine = os.Getenv(wineOverrideEnv)
 	if wine == "" {
 		if wine, err = exec.LookPath("wine"); err != nil {
@@ -784,5 +780,5 @@ func (a *Adapter) binaries() (string, string, string, error) {
 	if a.detected != nil {
 		return a.detected.WineBin, a.detected.WineBootBin, a.detected.WineServerBin, nil
 	}
-	return resolveBinariesForWayland(a.wayland)
+	return resolveBinaries()
 }
