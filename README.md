@@ -6,11 +6,13 @@ GPU-specific settings are applied automatically for AMD, NVIDIA, and Intel.
 
 ## Requirements
 
-- Wine, **>= 11.19 for Wayland**. On Arch Linux, install either:
+- Wine. On Arch Linux, `wine` and `wine-staging` both work:
   ```bash
-  sudo pacman -S wine-staging
-  # Or: sudo pacman -S wine
+  sudo pacman -S wine
   ```
+  HDR on native Wayland needs **Wine >= 11.19**. Older Wine still runs, but
+  bnetctl warns and HDR is unavailable. CachyOS Wine (`wine-cachyos-opt`)
+  currently ships 10.x, so it does not qualify.
 - Vulkan drivers for your GPU, plus DXVK and VKD3D-proton package data.
   On CachyOS these are available as `dxvk-mingw-git` and
   `vkd3d-proton-mingw-git`; other distributions may package them differently.
@@ -58,7 +60,7 @@ bnetctl clean -a                        # Also remove desktop entries and data
 1. `BNETCTL_WINE`, when set, selects the Wine executable for every display mode.
 2. Otherwise, use `wine` on `PATH`, falling back to `/opt/wine-cachyos/bin/wine`.
 3. A tracked prefix requires Wine at least as new as its recorded version, including for stop; an older explicit override is rejected.
-4. `wineboot` and `wineserver` must be beside the resolved Wine binary; Wayland warns below 11.19.
+4. `wineboot` and `wineserver` must be beside the resolved Wine binary; Wayland warns below 11.19 (HDR).
 
 For example: `BNETCTL_WINE=/usr/bin/wine bnetctl launch`.
 
@@ -72,6 +74,22 @@ an HDR-capable monitor; also enable HDR in the game.
 An existing `DXVK_HDR` takes precedence. `--no-hdr` disables automatic settings
 and unsets inherited `DXVK_HDR`, but leaves user-provided `DXVK_CONFIG` intact.
 X11 mode leaves the user's HDR environment untouched.
+
+## Known issues
+
+- **Battle.net UI under native Wayland:** Wine's Wayland driver cannot render
+  the cross-process GPU surface used by Battle.net's embedded Chromium (CEF).
+  bnetctl keeps CEF GPU rendering in-process and disables Chromium's background
+  throttling; without that, the login popup loads but never returns, leaving
+  the launcher on a spinner. If the UI still misbehaves, use
+  `--display-driver x11`.
+- **HDR:** only on native Wayland with Wine >= 11.19, and only for World of
+  Warcraft. The Battle.net launcher itself never runs in HDR.
+- **Wine systray:** disabled on every launch; on Wayland tiling compositors it
+  shows up as an orphan floating window.
+- **Login certificate check:** Battle.net's backend certificate validation fails
+  under Wine. bnetctl seeds the cached login address so the sign-in flow can
+  recover.
 
 ## Troubleshooting
 
