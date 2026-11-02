@@ -19,7 +19,17 @@ GPU-specific settings are applied automatically for AMD, NVIDIA, and Intel.
 
 ## Install
 
-With Go installed:
+On Arch Linux, install from the AUR:
+
+```bash
+paru -S bnetctl-bin   # Prebuilt release binary
+paru -S bnetctl-git   # Built from the latest source
+```
+
+Other distributions can download a prebuilt archive (amd64 or arm64) from the
+[releases page](https://git.bnema.dev/bnetctl/releases).
+
+Alternatively, with Go installed:
 
 ```bash
 go install github.com/bnema/bnetctl@latest
