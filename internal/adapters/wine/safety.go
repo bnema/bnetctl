@@ -1,6 +1,7 @@
 package wine
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 )
 
 func versionNumbers(v string) ([]int, error) {
@@ -119,19 +121,10 @@ func readVersion(path string) (string, error) {
 	return v, nil
 }
 func (a *Adapter) LockPrefix(prefix string) (func(), error) {
-	if err := os.MkdirAll(prefix, 0755); err != nil {
-		return nil, err
-	}
-	f, err := os.OpenFile(filepath.Join(prefix, ".bnetctl.lock"), os.O_CREATE|os.O_RDWR, 0600)
+	release, err := a.lockPrefixExclusion(prefix, 0)
 	if err != nil {
 		return nil, err
 	}
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		_ = f.Close()
-		return nil, fmt.Errorf("prefix is locked by another bnetctl invocation: %w", err)
-	}
-	var once sync.Once
-	release := func() { once.Do(func() { _ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN); _ = f.Close() }) }
 	versions, err := a.selectPrefixRuntime(prefix)
 	if err != nil {
 		release()
@@ -186,4 +179,37 @@ func (a *Adapter) selectPrefixRuntime(prefix string) (map[string]string, error) 
 		return nil, err
 	}
 	return versions, nil
+}
+
+// lockPrefixExclusion never runs Wine or migration preflight. The persistent
+// sibling inode must not be removed: waiters must all lock the same file even
+// while the prefix is deleted and recreated.
+func (a *Adapter) lockPrefixExclusion(prefix string, wait time.Duration) (func(), error) {
+	prefix = filepath.Clean(prefix)
+	if err := os.MkdirAll(filepath.Dir(prefix), 0755); err != nil {
+		return nil, err
+	}
+	f, err := os.OpenFile(prefix+".lock", os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return nil, err
+	}
+	deadline := time.Now().Add(wait)
+	announced := false
+	for {
+		err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+		if err == nil {
+			break
+		}
+		if !errors.Is(err, syscall.EWOULDBLOCK) || !time.Now().Before(deadline) {
+			_ = f.Close()
+			return nil, fmt.Errorf("prefix is locked by another bnetctl invocation (retry after maintenance completes): %w", err)
+		}
+		if !announced {
+			a.log.Info("waiting for prefix maintenance lock", "prefix", prefix, "timeout", wait)
+			announced = true
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	var once sync.Once
+	return func() { once.Do(func() { _ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN); _ = f.Close() }) }, nil
 }

@@ -367,6 +367,29 @@ func (a *Adapter) waitForBattleNetExit(prefixPath string, max time.Duration) {
 // reaped here - `wineserver -k` cannot reach them, because there is no server
 // left to talk to.
 func (a *Adapter) GracefulKillPrefix(prefixPath string, timeout time.Duration) (domain.StopResult, error) {
+	release, err := a.lockPrefixExclusion(prefixPath, timeout)
+	if err != nil {
+		return domain.StopResult{}, err
+	}
+	defer release()
+	return a.gracefulKillPrefix(prefixPath, timeout)
+}
+
+// WithStoppedPrefix keeps shutdown and the caller's deletion in one exclusion
+// interval. The callback is never invoked unless shutdown has been verified.
+func (a *Adapter) WithStoppedPrefix(prefixPath string, timeout time.Duration, remove func() error) error {
+	release, err := a.lockPrefixExclusion(prefixPath, timeout)
+	if err != nil {
+		return err
+	}
+	defer release()
+	if _, err := a.gracefulKillPrefix(prefixPath, timeout); err != nil {
+		return err
+	}
+	return remove()
+}
+
+func (a *Adapter) gracefulKillPrefix(prefixPath string, timeout time.Duration) (domain.StopResult, error) {
 	if _, err := a.selectPrefixRuntime(prefixPath); err != nil {
 		return domain.StopResult{}, err
 	}

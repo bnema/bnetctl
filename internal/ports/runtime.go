@@ -8,6 +8,10 @@ import (
 
 // RuntimePort defines operations for running Windows executables via a compatibility layer
 type RuntimePort interface {
+	// WithStoppedPrefix verifies shutdown and holds exclusion through remove.
+	// It does not perform migration preflight; remove is skipped on stop failure.
+	WithStoppedPrefix(prefixPath string, timeout time.Duration, remove func() error) error
+
 	// LockPrefix locks maintenance through process start and selects a non-downgrading runtime.
 	LockPrefix(prefixPath string) (release func(), err error)
 

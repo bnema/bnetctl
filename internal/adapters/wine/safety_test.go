@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/log"
 )
@@ -166,5 +167,87 @@ func TestShutdownSelectsRecordedMinimumWithoutPreflight(t *testing.T) {
 	mustWrite(t, filepath.Join(prefix, prefixVersionFile+".migrating"), "wine-12.0\n")
 	if _, err := a.GracefulKillPrefix(prefix, 0); err == nil || !strings.Contains(err.Error(), "downgrade") {
 		t.Fatalf("downgrade: %v", err)
+	}
+}
+
+func TestShutdownAndDeletionShareMaintenanceLock(t *testing.T) {
+	dir := fakeVersionInstall(t, "wine-11.21")
+	t.Setenv(wineOverrideEnv, filepath.Join(dir, "wine"))
+	prefix := filepath.Join(t.TempDir(), "prefix")
+	a := NewAdapter(log.New(io.Discard))
+	b := NewAdapter(log.New(io.Discard))
+	release, err := a.LockPrefix(prefix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.GracefulKillPrefix(prefix, 0); err == nil || !strings.Contains(err.Error(), "locked") {
+		t.Fatalf("stop during maintenance: %v", err)
+	}
+	called := false
+	if err := b.WithStoppedPrefix(prefix, 0, func() error { called = true; return nil }); err == nil || called {
+		t.Fatalf("delete during maintenance: called=%v err=%v", called, err)
+	}
+	release()
+	// Pending migration actions must not prevent shutdown/deletion.
+	if err := os.MkdirAll(filepath.Join(prefix, "pfx"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, filepath.Join(prefix, "pfx/user.reg"), "[Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\RunOnce]\n\"pending\"=\"run\"\n")
+	err = b.WithStoppedPrefix(prefix, 0, func() error {
+		if err := os.RemoveAll(prefix); err != nil {
+			return err
+		}
+		// Removal and recreation must not create a second lock inode.
+		if err := os.MkdirAll(prefix, 0755); err != nil {
+			return err
+		}
+		if unlock, err := a.LockPrefix(prefix); err == nil {
+			unlock()
+			t.Error("maintenance acquired lock during deletion")
+		}
+		if _, err := a.GracefulKillPrefix(prefix, 0); err == nil {
+			t.Error("shutdown acquired lock during deletion")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	unlock, err := a.LockPrefix(prefix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unlock()
+}
+
+func TestShutdownWaitsForMaintenance(t *testing.T) {
+	dir := fakeVersionInstall(t, "wine-11.21")
+	t.Setenv(wineOverrideEnv, filepath.Join(dir, "wine"))
+	prefix := filepath.Join(t.TempDir(), "prefix")
+	a := NewAdapter(log.New(io.Discard))
+	release, err := a.LockPrefix(prefix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	done := make(chan error, 1)
+	go func() {
+		b := NewAdapter(log.New(io.Discard))
+		_, err := b.GracefulKillPrefix(prefix, time.Second)
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		t.Fatalf("shutdown did not wait: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	release()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("shutdown did not resume")
 	}
 }

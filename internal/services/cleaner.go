@@ -56,16 +56,14 @@ func (s *CleanerService) CleanPrefix() error {
 
 	// A prefix whose wineserver is gone still holds wine processes, and removing
 	// the directory under them leaves them running against deleted files.
-	if _, err := s.runtime.GracefulKillPrefix(s.cfg.PrefixDir, 10*time.Second); err != nil {
-		return fmt.Errorf("stop wine processes before removal: %w", err)
-	}
-
-	if s.fs.Exists(s.cfg.PrefixDir) {
-		if err := s.fs.Remove(s.cfg.PrefixDir); err != nil {
-			return fmt.Errorf("remove prefix: %w", err)
+	return s.runtime.WithStoppedPrefix(s.cfg.PrefixDir, 10*time.Second, func() error {
+		if s.fs.Exists(s.cfg.PrefixDir) {
+			if err := s.fs.Remove(s.cfg.PrefixDir); err != nil {
+				return fmt.Errorf("remove prefix: %w", err)
+			}
 		}
-	}
-	return nil
+		return nil
+	})
 }
 
 // CleanAll removes everything: cache, prefix, desktop entry, data dir
