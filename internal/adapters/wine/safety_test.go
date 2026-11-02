@@ -251,3 +251,104 @@ func TestShutdownWaitsForMaintenance(t *testing.T) {
 		t.Fatal("shutdown did not resume")
 	}
 }
+
+func TestLockRetriesInterruptedInitialCreation(t *testing.T) {
+	a, prefix, calls := migrationFixture(t)
+	rt := a.detected
+	// Provide deterministic detection while preserving the graphics fixture.
+	mustWrite(t, rt.WineBin, "#!/bin/sh\nif [ \"$1\" = --version ]; then echo wine-11.21; exit 0; fi\nif [ \"$1\" = reg ] && [ \"$2\" = query ]; then echo \"$5 REG_SZ native\"; fi\n")
+	mustWrite(t, rt.WineServerBin, "#!/bin/sh\nif [ \"$1\" = -k0 ]; then exit 1; fi\n")
+	mustWrite(t, rt.WineBootBin, "#!/bin/sh\necho init >> '"+calls+"'\nprintf 'WINE REGISTRY Version 2\\n#arch=win64\\n' > \"$WINEPREFIX/system.reg\"\n")
+	t.Setenv(wineOverrideEnv, rt.WineBin)
+	// Detect discovers these setup paths; graphicsPlan uses their package data.
+	tools := t.TempDir()
+	for name, target := range map[string]string{"setup_dxvk": rt.DXVKSetupBin, "setup_vkd3d_proton": rt.VKD3DSetupBin} {
+		if err := os.Symlink(target, filepath.Join(tools, name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", tools)
+	if err := os.Remove(filepath.Join(prefix, "pfx/system.reg")); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, filepath.Join(prefix, prefixVersionFile+".migrating"), "wine-11.21\n")
+	release, err := a.LockPrefix(prefix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	release()
+	version, err := readVersion(filepath.Join(prefix, prefixVersionFile))
+	if err != nil || version != "wine-11.21" {
+		t.Fatalf("version: %s %v", version, err)
+	}
+	if _, err := os.Stat(filepath.Join(prefix, prefixVersionFile+".migrating")); !os.IsNotExist(err) {
+		t.Fatalf("pending record retained: %v", err)
+	}
+	data, err := os.ReadFile(calls)
+	if err != nil || !strings.Contains(string(data), "init") {
+		t.Fatalf("init not retried: %s %v", data, err)
+	}
+	// Missing or malformed architecture on an established prefix is not initial creation.
+	for _, contents := range []string{"", "WINE REGISTRY Version 2\n#arch=garbage\n"} {
+		if contents == "" {
+			if err := os.Remove(filepath.Join(prefix, "pfx/system.reg")); err != nil {
+				t.Fatal(err)
+			}
+		} else {
+			mustWrite(t, filepath.Join(prefix, "pfx/system.reg"), contents)
+		}
+		mustWrite(t, filepath.Join(prefix, prefixVersionFile+".migrating"), "wine-11.21\n")
+		if unlock, err := a.LockPrefix(prefix); err == nil {
+			unlock()
+			t.Fatal("established prefix with invalid architecture accepted")
+		}
+	}
+}
+
+func TestInterruptedInitialCreationGuards(t *testing.T) {
+	for _, guard := range []string{"running", "RunOnce", "boot failure", "malformed architecture"} {
+		t.Run(guard, func(t *testing.T) {
+			dir := fakeVersionInstall(t, "wine-11.21")
+			t.Setenv(wineOverrideEnv, filepath.Join(dir, "wine"))
+			prefix := t.TempDir()
+			if err := os.MkdirAll(filepath.Join(prefix, "pfx"), 0755); err != nil {
+				t.Fatal(err)
+			}
+			mustWrite(t, filepath.Join(prefix, prefixVersionFile+".migrating"), "wine-11.21\n")
+			calls := filepath.Join(t.TempDir(), "boot-calls")
+			mustWrite(t, filepath.Join(dir, "wineboot"), "#!/bin/sh\necho init >> '"+calls+"'\nexit 1\n")
+			switch guard {
+			case "running":
+				mustWrite(t, filepath.Join(dir, "wineserver"), "#!/bin/sh\nexit 0\n")
+			case "RunOnce":
+				mustWrite(t, filepath.Join(prefix, "pfx/user.reg"), "[Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\RunOnce]\n\"pending\"=\"run\"\n")
+			case "malformed architecture":
+				mustWrite(t, filepath.Join(prefix, "pfx/system.reg"), "#arch=garbage\n")
+			}
+			a := NewAdapter(log.New(io.Discard))
+			if unlock, err := a.LockPrefix(prefix); err == nil {
+				unlock()
+				t.Fatal("unsafe initialization accepted")
+			}
+			if _, err := os.Stat(filepath.Join(prefix, prefixVersionFile)); !os.IsNotExist(err) {
+				t.Fatalf("committed version: %v", err)
+			}
+			if _, err := os.Stat(filepath.Join(prefix, prefixVersionFile+".migrating")); err != nil {
+				t.Fatalf("lost retry marker: %v", err)
+			}
+			if _, err := os.Stat(calls); guard == "boot failure" {
+				if err != nil {
+					t.Fatal("boot retry did not run")
+				}
+			} else if !os.IsNotExist(err) {
+				t.Fatal("guard ran wineboot")
+			}
+			// Every failure releases exclusion for a later retry or shutdown.
+			unlock, err := a.lockPrefixExclusion(prefix, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			unlock()
+		})
+	}
+}

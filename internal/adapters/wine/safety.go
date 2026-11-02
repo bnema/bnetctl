@@ -136,6 +136,23 @@ func (a *Adapter) LockPrefix(prefix string) (func(), error) {
 			release()
 			return nil, err
 		}
+		// Only an uncommitted initial creation can safely retry --init without
+		// an architecture header. Established prefixes must still validate it.
+		if versions[prefixVersionFile] == "" && versions[prefixVersionFile+".migrating"] != "" {
+			if _, err := os.Stat(filepath.Join(prefix, "pfx", "system.reg")); os.IsNotExist(err) {
+				if a.IsProcessRunning(prefix) {
+					release()
+					return nil, fmt.Errorf("cannot retry Wine prefix initialization while it is running")
+				}
+				if err := a.CreatePrefix(prefix); err != nil {
+					release()
+					return nil, fmt.Errorf("retry Wine prefix initialization: %w", err)
+				}
+			} else if err != nil {
+				release()
+				return nil, err
+			}
+		}
 		// New prefixes have no system.reg until wineboot initializes them.
 		if _, err := os.Stat(filepath.Join(prefix, "pfx")); err == nil {
 			if _, err := readPrefixArch(filepath.Join(prefix, "pfx")); err != nil {
