@@ -132,35 +132,12 @@ func (a *Adapter) LockPrefix(prefix string) (func(), error) {
 	}
 	var once sync.Once
 	release := func() { once.Do(func() { _ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN); _ = f.Close() }) }
-	a.minimum = ""
-	versions := map[string]string{}
-	for _, name := range []string{prefixVersionFile, prefixVersionFile + ".migrating"} {
-		v, err := readVersion(filepath.Join(prefix, name))
-		if err != nil {
-			release()
-			return nil, err
-		}
-		versions[name] = v
-		if v != "" {
-			cmp := 1
-			if a.minimum != "" {
-				cmp, err = compareVersions(v, a.minimum)
-			}
-			if err != nil {
-				release()
-				return nil, err
-			}
-			if cmp > 0 {
-				a.minimum = v
-			}
-		}
-	}
-	a.detected = nil
-	rt, err := a.Detect()
+	versions, err := a.selectPrefixRuntime(prefix)
 	if err != nil {
 		release()
 		return nil, err
 	}
+	rt := a.detected
 	if versions[prefixVersionFile+".migrating"] != "" || versions[prefixVersionFile] != rt.Version {
 		if err := checkRunOnce(filepath.Join(prefix, "pfx")); err != nil {
 			release()
@@ -178,4 +155,35 @@ func (a *Adapter) LockPrefix(prefix string) (func(), error) {
 		}
 	}
 	return release, nil
+}
+
+// selectPrefixRuntime applies the recorded version floor without migration preflight.
+func (a *Adapter) selectPrefixRuntime(prefix string) (map[string]string, error) {
+	a.minimum = ""
+	versions := map[string]string{}
+	for _, name := range []string{prefixVersionFile, prefixVersionFile + ".migrating"} {
+		v, err := readVersion(filepath.Join(prefix, name))
+		if err != nil {
+			return nil, err
+		}
+		versions[name] = v
+		if v != "" {
+			cmp := 1
+			if a.minimum != "" {
+				cmp, err = compareVersions(v, a.minimum)
+			}
+			if err != nil {
+				return nil, err
+			}
+			if cmp > 0 {
+				a.minimum = v
+			}
+		}
+	}
+	a.detected = nil
+	_, err := a.Detect()
+	if err != nil {
+		return nil, err
+	}
+	return versions, nil
 }

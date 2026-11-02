@@ -367,6 +367,9 @@ func (a *Adapter) waitForBattleNetExit(prefixPath string, max time.Duration) {
 // reaped here - `wineserver -k` cannot reach them, because there is no server
 // left to talk to.
 func (a *Adapter) GracefulKillPrefix(prefixPath string, timeout time.Duration) (domain.StopResult, error) {
+	if _, err := a.selectPrefixRuntime(prefixPath); err != nil {
+		return domain.StopResult{}, err
+	}
 	log := a.log
 	pfxDir := filepath.Join(prefixPath, "pfx")
 	log.Debug("graceful kill initiated", "prefix", pfxDir, "timeout", timeout)

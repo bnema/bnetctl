@@ -149,3 +149,22 @@ func TestMatchingVersionAllowsRunOnce(t *testing.T) {
 		t.Fatalf("recovery skipped preflight: %v", err)
 	}
 }
+
+func TestShutdownSelectsRecordedMinimumWithoutPreflight(t *testing.T) {
+	dir := fakeVersionInstall(t, "wine-11.21")
+	t.Setenv(wineOverrideEnv, filepath.Join(dir, "wine"))
+	prefix := t.TempDir()
+	mustWrite(t, filepath.Join(prefix, prefixVersionFile), "wine-11.19\n")
+	mustWrite(t, filepath.Join(prefix, "pfx/user.reg"), "[Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\RunOnce]\n\"pending\"=\"run\"\n")
+	a := NewAdapter(log.New(io.Discard))
+	if _, err := a.GracefulKillPrefix(prefix, 0); err != nil {
+		t.Fatal(err)
+	}
+	if a.detected.Version != "wine-11.21" {
+		t.Fatalf("runtime: %+v", a.detected)
+	}
+	mustWrite(t, filepath.Join(prefix, prefixVersionFile+".migrating"), "wine-12.0\n")
+	if _, err := a.GracefulKillPrefix(prefix, 0); err == nil || !strings.Contains(err.Error(), "downgrade") {
+		t.Fatalf("downgrade: %v", err)
+	}
+}
