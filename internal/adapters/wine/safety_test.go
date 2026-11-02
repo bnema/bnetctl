@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -230,16 +231,19 @@ func TestShutdownWaitsForMaintenance(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer release()
+	writer := &lockContentionWriter{waiting: make(chan struct{})}
 	done := make(chan error, 1)
 	go func() {
-		b := NewAdapter(log.New(io.Discard))
+		b := NewAdapter(log.New(writer))
 		_, err := b.GracefulKillPrefix(prefix, time.Second)
 		done <- err
 	}()
 	select {
 	case err := <-done:
 		t.Fatalf("shutdown did not wait: %v", err)
-	case <-time.After(50 * time.Millisecond):
+	case <-writer.waiting:
+	case <-time.After(2 * time.Second):
+		t.Fatal("shutdown never observed lock contention")
 	}
 	release()
 	select {
@@ -351,4 +355,18 @@ func TestInterruptedInitialCreationGuards(t *testing.T) {
 			unlock()
 		})
 	}
+}
+
+// Observe the production contention message rather than guessing when the
+// shutdown goroutine has attempted its first flock.
+type lockContentionWriter struct {
+	once    sync.Once
+	waiting chan struct{}
+}
+
+func (w *lockContentionWriter) Write(p []byte) (int, error) {
+	if strings.Contains(string(p), "waiting for prefix maintenance lock") {
+		w.once.Do(func() { close(w.waiting) })
+	}
+	return len(p), nil
 }
