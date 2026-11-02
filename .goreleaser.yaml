@@ -21,6 +21,8 @@ builds:
     goarch:
       - amd64
       - arm64
+    flags:
+      - -trimpath
     ldflags:
       - -s -w
       - -X github.com/bnema/bnetctl/cmd.version={{.Version}}
@@ -80,6 +82,8 @@ release:
     ## Arch Linux
     ```sh
     yay -S bnetctl-bin
+    # Or build the latest Git source:
+    yay -S bnetctl-git
     ```
 
 git:
@@ -95,6 +99,16 @@ aurs:
     maintainers:
       - bnema <b at bnema dot dev>
     license: MIT
+    optdepends:
+      - 'wine-staging: Wine runtime (>= 11.19 for Wayland)'
+      - 'wine: alternative Wine runtime'
+      - 'wine-cachyos-opt: fallback Wine runtime'
+      - 'dxvk-mingw-git: Direct3D 8/9/10/11 translation to Vulkan'
+      - 'vkd3d-proton-mingw-git: Direct3D 12 translation to Vulkan'
+      - 'icoutils: Battle.net icon for the .desktop entry'
+    commit_author:
+      name: bnema
+      email: b@bnema.dev
     private_key: '{{ .Env.AUR_KEY }}'
     git_url: ssh://aur@aur.archlinux.org/bnetctl-bin.git
     # auto: prerelease tags (v1.2.3-rc.1) are not pushed to AUR.

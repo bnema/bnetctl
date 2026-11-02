@@ -2,6 +2,8 @@
 # Build and publish bnetctl-git. Run as a non-root user with makepkg available.
 # DRY_RUN=1 builds and prints metadata without contacting the AUR.
 set -euo pipefail
+aur_key=${AUR_KEY:?}
+unset AUR_KEY
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 cp "$1" "$work/PKGBUILD"
@@ -16,7 +18,7 @@ if [[ ${DRY_RUN:-} == 1 ]]; then
 fi
 
 key=$work/aur-key
-(umask 077 && printf '%s\n' "$AUR_KEY" >"$key")
+(umask 077 && printf '%s\n' "$aur_key" >"$key")
 # Pinned AUR host key, as in neferwl; do not trust an unauthenticated keyscan.
 # SHA256:RFzBCUItH9LZS0cKB5UE6ceAYhBD5C8GeOBip8Z11+4
 echo 'aur.archlinux.org ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEuBKrPzbawxA/k2g6NcyV5jmqwJ2s+zpgZGZ7tpLIcN' >"$work/known_hosts"
