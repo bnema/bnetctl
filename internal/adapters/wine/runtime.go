@@ -399,19 +399,18 @@ func (a *Adapter) gracefulKillPrefix(prefixPath string, timeout time.Duration) (
 
 	var result domain.StopResult
 
-	// Let Battle.net save its session before the prefix is taken down.
-	if a.IsProcessRunning(prefixPath) {
-		a.closeBattleNetWindows(prefixPath)
-		a.waitForBattleNetExit(prefixPath, battleNetCloseWait)
-	}
-
-	// Snapshot what is still running: the wineserver terminates its own clients, so
-	// they cannot be listed after the stop.
+	// Capture the initial session before WM_CLOSE can make clients disappear.
 	session, snapshotErr := prefixProcesses(pfxDir, "")
 	if snapshotErr != nil {
 		log.Warn("cannot list the wine session before stopping it", "prefix", pfxDir, "error", snapshotErr)
 	} else {
 		result.Session, result.Wineserver = splitWineserver(processNames(session))
+	}
+
+	// Let Battle.net save its session before the prefix is taken down.
+	if a.IsProcessRunning(prefixPath) {
+		a.closeBattleNetWindows(prefixPath)
+		a.waitForBattleNetExit(prefixPath, battleNetCloseWait)
 	}
 
 	// Stop the wineserver. When none is running, the prefix only holds leftovers

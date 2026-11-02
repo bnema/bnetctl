@@ -423,3 +423,36 @@ func requireAlive(t *testing.T, cmd *exec.Cmd) {
 		}
 	}
 }
+
+func TestGracefulKillReportsClientClosedBeforeServerStop(t *testing.T) {
+	prefix := t.TempDir()
+	client := startFakeWineProcess(t, "Battle.net.exe", "WINEPREFIX="+winePrefixPath(prefix), "WINESERVERSOCKET=/tmp/server.sock")
+	logPath := fakeWineBinaries(t, 0, fmt.Sprintf("if [ \"$1\" = '-k' ] && kill -0 %d 2>/dev/null; then exit 1; fi\n", client.Process.Pid))
+	wine := os.Getenv(wineOverrideEnv)
+	data, err := os.ReadFile(wine)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data = append(data, []byte(fmt.Sprintf("if [ \"$1\" = taskkill ]; then kill -9 %d; fi\n", client.Process.Pid))...)
+	if err := os.WriteFile(wine, data, 0755); err != nil {
+		t.Fatal(err)
+	}
+	a := NewAdapter(log.New(io.Discard))
+	result, err := a.GracefulKillPrefix(prefix, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Session) != 1 || result.Session[0].PID != client.Process.Pid {
+		t.Fatalf("closed client missing: %+v", result)
+	}
+	if len(result.Leftovers) != 0 {
+		t.Fatalf("closed client counted as leftover: %+v", result)
+	}
+	calls, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(calls), "wine taskkill") || !strings.Contains(string(calls), "wineserver -k\n") {
+		t.Fatalf("missing close/stop: %s", calls)
+	}
+}
