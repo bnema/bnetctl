@@ -33,3 +33,32 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # SSH key for the bnetctl-bin AUR push.
           AUR_KEY: ${{ secrets.AUR_KEY }}
+
+  aur:
+    needs: release
+    if: github.server_url != 'https://github.com' && !contains(github.ref_name, '-')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    container:
+      image: archlinux:latest
+    steps:
+      - name: Install build tools
+        run: pacman -Syu --noconfirm --needed base-devel go git openssh sudo
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Create the build user
+        run: |
+          useradd -m builder
+          echo 'builder ALL=(root) NOPASSWD: /usr/bin/pacman' >/etc/sudoers.d/builder
+      - name: Build and publish bnetctl-git
+        env:
+          AUR_KEY: ${{ secrets.AUR_KEY }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          version=${TAG#v}
+          sed -i "s/^pkgver=.*/pkgver=$version/" packaging/aur/bnetctl-git/PKGBUILD
+          chmod -R a+rX "$GITHUB_WORKSPACE"
+          sudo -u builder --preserve-env=AUR_KEY \
+            packaging/aur/publish.sh packaging/aur/bnetctl-git/PKGBUILD

@@ -103,6 +103,7 @@ aurs:
       - bnetctl
     conflicts:
       - bnetctl
+      - bnetctl-git
     package: |-
       install -Dm755 "./bnetctl" "${pkgdir}/usr/bin/bnetctl"
       install -Dm644 "./LICENSE" "${pkgdir}/usr/share/licenses/bnetctl-bin/LICENSE"
