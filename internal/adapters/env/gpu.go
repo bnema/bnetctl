@@ -146,8 +146,11 @@ func BuildGPUEnvForDisplayHDR(driver DisplayDriver, noHDR bool) *domain.WineEnv 
 	env.Vars["WINEESYNC"] = "1"
 	env.Vars["WINEFSYNC"] = "1"
 
-	// Suppress Wine debug output for performance
-	env.Vars["WINEDEBUG"] = "-all"
+	// Keep low-cost problem diagnostics unless explicitly overridden.
+	env.Vars["WINEDEBUG"] = "err+all,warn+waylanddrv"
+	if debug, set := os.LookupEnv("BNETCTL_WINEDEBUG"); set {
+		env.Vars["WINEDEBUG"] = debug
+	}
 
 	// FreeType hinting for better font rendering in Wine
 	env.Vars["FREETYPE_PROPERTIES"] = "truetype:interpreter-version=35"

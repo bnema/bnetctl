@@ -1,6 +1,7 @@
 package env
 
 import (
+	"os"
 	"slices"
 	"testing"
 )
@@ -53,5 +54,33 @@ func TestBuildGPUEnvForDisplayX11KeepsDisplay(t *testing.T) {
 	got := BuildGPUEnvForDisplay(DisplayDriverX11)
 	if slices.Contains(got.Unset, "DISPLAY") {
 		t.Fatalf("X11 environment must inherit DISPLAY: %#v", got.Unset)
+	}
+}
+
+func TestWineDebug(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		value string
+		set   bool
+		want  string
+	}{
+		{name: "default", want: "err+all,warn+waylanddrv"},
+		{name: "disabled", set: true, value: "-all", want: "-all"},
+		{name: "custom", set: true, value: "+relay", want: "+relay"},
+		{name: "empty", set: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("BNETCTL_WINEDEBUG", tt.value)
+			if !tt.set {
+				if err := os.Unsetenv("BNETCTL_WINEDEBUG"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for _, driver := range []DisplayDriver{DisplayDriverWayland, DisplayDriverX11} {
+				if got := BuildGPUEnvForDisplay(driver).Vars["WINEDEBUG"]; got != tt.want {
+					t.Fatalf("%s: got %q, want %q", driver, got, tt.want)
+				}
+			}
+		})
 	}
 }
