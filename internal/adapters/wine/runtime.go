@@ -213,7 +213,11 @@ func (a *Adapter) RunExe(prefixPath string, exePath string, wineEnv *domain.Wine
 	cmd := exec.Command(rt.WineBin, exePath)
 	cmd.Env = envMapToSlice(env)
 	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	stderr := a.launchStderr()
+	if stderr != os.Stderr {
+		defer func() { _ = stderr.Close() }()
+	}
+	cmd.Stderr = stderr
 	return cmd.Run()
 }
 
@@ -234,7 +238,12 @@ func (a *Adapter) RunExeAsync(prefixPath string, exePath string, wineEnv *domain
 	cmd := exec.Command(rt.WineBin, cmdArgs...)
 	cmd.Env = envMapToSlice(env)
 	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	stderr := a.launchStderr()
+	if stderr != os.Stderr {
+		// Start duplicates the descriptor into the child before we close it.
+		defer func() { _ = stderr.Close() }()
+	}
+	cmd.Stderr = stderr
 
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("start process: %w", err)

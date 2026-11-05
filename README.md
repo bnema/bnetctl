@@ -69,6 +69,12 @@ bnetctl clean -a                        # Also remove desktop entries and data
 
 For example: `BNETCTL_WINE=/usr/bin/wine bnetctl launch`.
 
+`BNETCTL_WINEDEBUG`, when set, overrides the launch `WINEDEBUG` verbatim
+(including an empty value). The default is `err+all,warn+waylanddrv`, retaining
+errors and Wayland driver warnings at low cost. To silence Wine diagnostics,
+use `BNETCTL_WINEDEBUG=-all bnetctl launch`. Helper commands such as wineboot,
+registry edits, and taskkill keep diagnostics disabled.
+
 ### HDR
 
 Native Wayland automatically enables HDR for supported World of Warcraft
@@ -112,7 +118,15 @@ X11 mode leaves the user's HDR environment untouched.
   Stop/clean wait up to 10 seconds for the lock; retry after maintenance finishes.
   Launch releases its lock once Wine starts, not at the end of the game session.
 - **More detail:** run `bnetctl --verbose launch` to see runtime selection and
-  maintenance diagnostics. Logs are saved to `~/.cache/bnetctl/bnetctl.log`.
+  maintenance diagnostics. bnetctl logs are saved to `~/.cache/bnetctl/bnetctl.log`.
+- **Wine diagnostics:** launch stderr is saved to
+  `$XDG_STATE_HOME/bnetctl/logs/wine-<timestamp>-<unique>.log` (falling back to
+  `~/.local/state/bnetctl/logs`), with `latest.log` pointing to the newest log.
+  Up to 3 launches are retained (~100 MiB of old logs); at launch, older logs
+  are pruned and old logs over 50 MiB are deleted. The running log is uncapped.
+  The path is reported once at info level; Wine stdout and bnetctl's own
+  terminal logs are unchanged. If log setup fails, bnetctl warns and leaves
+  Wine stderr on the terminal.
 
 ## Directories
 
@@ -126,6 +140,7 @@ are not currently honored. Full cleanup retains the data directory and its
 | Prefix | `~/.local/share/bnetctl/prefix` |
 | Cache | `~/.cache/bnetctl` |
 | Log | `~/.cache/bnetctl/bnetctl.log` |
+| Wine logs | `$XDG_STATE_HOME/bnetctl/logs` (default `~/.local/state/bnetctl/logs`) |
 
 ## License
 
